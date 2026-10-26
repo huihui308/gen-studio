@@ -1,10 +1,12 @@
 # gen-studio
 
-在本机（2 × RTX 3080 Ti 12 GB）上部署开源生图 / 生视频模型的可复现脚本仓库，外加访问这些模型的 web 生成工作台（`web/`，规划中）：环境构建 → 权重下载 → 起服务 → 发请求 → 界面，**一个模型一个子目录**。当前只有 `h3/`（MiniMax-H3 FL2VA + SGLang）。
+在本机（2 × RTX 3080 Ti 12 GB）上部署开源生图 / 生视频模型的可复现脚本仓库，外加访问这些模型的 web 控制台（`web/`，已实现，仅登录/改密、模型启停、运行状态五项）：环境构建 → 权重下载 → 起服务 → 发请求 → 界面，**一个模型一个子目录**。当前两条线：`h3/`（MiniMax-H3 FL2VA + SGLang，视频）与 `qwen-image/`（Qwen-Image-2.1-Turbo + ComfyUI，生图）。
 
 - 起服务：`cd h3 && ./serve_recipe_a.sh`（监听 `127.0.0.1:30010`）
 - 发请求：另开终端 `cd h3 && ./request_480p.sh`（产物落 `h3/output/`）
-- 运行资产（`h3/env/`、`h3/models/`、`h3/output/`、`h3/logs/`）不入 git
+- 生图起服务：`cd qwen-image && ./serve.sh`（ComfyUI，`127.0.0.1:30020`，锁 GPU0）
+- 生图发请求：另开终端 `cd qwen-image && ./t2i.py --width 1024 --height 1024 --prompt "..."`（产物落 `qwen-image/output/`）
+- 运行资产（`h3/{env,env312,models,output,outputs,inputs,logs}/`、`qwen-image/{env,ComfyUI,output,temp,logs}/`、`web/{.venv,data}/`）不入 git
 
 ## 记忆查找顺序
 

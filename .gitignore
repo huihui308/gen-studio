@@ -6,10 +6,21 @@ h3/env/
 h3/env312/
 # 模型权重（FL2VA 全量 ~144 GB）
 h3/models/
-# 推理产物（mp4）
+# 推理产物（mp4）：脚本自己下载的放 output/，sglang 服务端落盘的在 outputs/
 h3/output/
+h3/outputs/
+# 测试用输入素材（图生视频的参考图等）
+h3/inputs/
 # 下载 / 安装日志
 h3/logs/
+
+# qwen-image：conda 环境 + ComfyUI 本体（含 models/ 里的权重，GB 级）
+qwen-image/env/
+qwen-image/ComfyUI/
+# 出图产物 / 采样临时文件 / 下载安装日志
+qwen-image/output/
+qwen-image/temp/
+qwen-image/logs/
 
 # codegraph 索引库（GB 级二进制）
 .codegraph/
@@ -25,3 +36,7 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .pytest_cache/
+
+# web 控制台运行资产（虚拟环境、会话/凭据、进程记录、日志）
+web/.venv/
+web/data/

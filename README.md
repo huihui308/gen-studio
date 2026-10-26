@@ -5,6 +5,9 @@
 
 只提交脚本与文档；conda 环境、模型权重、推理产物、日志均不入库（见 `.gitignore`）。
 
+- 主远端：GitHub `git@github.com:huihui308/deploy-models.git`（`origin`）
+- 镜像远端：Gitee `git@gitee.com:huihui308/deploy-models.git`（`gitee`，同步需 `git push gitee master`）
+
 ## 目录
 
 ```

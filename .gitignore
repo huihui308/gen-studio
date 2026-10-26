@@ -1,0 +1,19 @@
+# 大文件 / 运行产物：一律不入库，只提交脚本与文档
+
+# conda 环境（GB 级）
+h3/env/
+# 模型权重（FL2VA 全量 ~144 GB）
+h3/models/
+# 推理产物（mp4）
+h3/output/
+# 下载 / 安装日志
+h3/logs/
+
+# 本地测试用虚拟环境
+.venv-test/
+
+# 常见 Python 产物
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/

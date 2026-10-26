@@ -1,34 +1,36 @@
 # gen-studio
 
-在本机（2 × RTX 3080 Ti 12 GB，driver 580.196.07）上**可复现地部署开源生图 / 生视频模型**，并规划一个访问它们的 **web 生成工作台**：环境构建 → 权重下载 → 起服务 → 发请求 → 界面。
+**English** | [简体中文](README.zh-CN.md)
 
-只提交脚本与文档；conda 环境、模型权重、推理产物、日志均不入库（见 `.gitignore`）。
+Reproducible deployment of open-source **image and video generation models** on a single workstation (2 × RTX 3080 Ti, 12 GB each, driver 580.196.07), plus a **web studio** to drive them (planned): environment build → weight download → serve → request → UI.
 
-- 主远端：GitHub `git@github.com:huihui308/gen-studio.git`（`origin`）
-- 镜像远端：Gitee `git@gitee.com:huihui308/deploy-models.git`（`gitee`，仓库仍用旧名，改名后同步更新）
-- 本机工作目录仍为 `/mnt/sdb1/soft/deploy-models`：conda 环境（`h3/env`、`h3/env312`）里已烘焙绝对路径，**暂不改目录名**，改名会让环境失效
+Only scripts and docs are committed. Conda envs, model weights, inference outputs and logs stay out of git (see `.gitignore`).
 
-## 目录
+- Primary remote: GitHub `git@github.com:huihui308/gen-studio.git` (`origin`)
+- Mirror remote: Gitee `git@gitee.com:huihui308/deploy-models.git` (`gitee`, still the old name — update once renamed)
+- The local working directory is still `/mnt/sdb1/soft/deploy-models`: the conda envs (`h3/env`, `h3/env312`) bake absolute paths, so **the directory is intentionally not renamed** — moving it breaks both envs
+
+## Layout
 
 ```
-h3/                     MiniMax-H3（FL2VA：图/文 → 视频 + 音频）
-  download_root.sh      下载 sglang 所需的“根布局”权重，断点续传（默认 8 并发）
-  download_fl2va.sh     旧版：按 FL2VA/ 子目录布局下载
-  serve_recipe_a.sh     SGLang Recipe A（12 GB 显存档）起服务
-  request_480p.sh       发一条 864×480 / 5s / 20 步 t2va 请求并下载 mp4
-web/                    （规划中）生成工作台：任务队列 + 画廊 + 多模型 adapter
+h3/                     MiniMax-H3 (FL2VA: image/text → video + audio)
+  download_root.sh      Download the "root layout" weights SGLang expects (resumable, 8 jobs by default)
+  download_fl2va.sh     Legacy: download by the FL2VA/ sub-directory layout
+  serve_recipe_a.sh     Serve with SGLang Recipe A (12 GB VRAM profile)
+  request_480p.sh       Send one 864×480 / 5 s / 20-step t2va request and save the mp4
+web/                    (planned) generation studio: job queue + gallery + per-model adapters
 ```
 
 ## h3
 
-- 模型：MiniMaxAI/MiniMax-H3，来源 [ModelScope](https://modelscope.cn/models/MiniMax/MiniMax-H3)，FL2VA 全量约 144 GB
-- 推理框架：SGLang 0.5.21（`sglang[diffusion]`）
-- 起服务参数：`--model-variant fl2va --performance-mode memory` +
-  `--layerwise-offload-components dit,text_encoder,vae`（DiT / 文本编码器 / VAE 全部 layerwise offload），
-  监听 `127.0.0.1:30010`
-- 环境：conda 独立环境（`h3/env312`，Python 3.12），依赖装在该环境内（`h3/env312/bin/sglang`）
+- Model: MiniMaxAI/MiniMax-H3 from [ModelScope](https://modelscope.cn/models/MiniMax/MiniMax-H3); full FL2VA weights ≈ 144 GB
+- Inference: SGLang 0.5.21 (`sglang[diffusion]`)
+- Serve flags: `--model-variant fl2va --performance-mode memory` +
+  `--layerwise-offload-components dit,text_encoder,vae` (DiT / text encoder / VAE all layerwise-offloaded),
+  listening on `127.0.0.1:30010`
+- Environment: dedicated conda prefix (`h3/env312`, Python 3.12), dependencies installed inside it (`h3/env312/bin/sglang`)
 
-### 1. 环境
+### 1. Environment
 
 ```bash
 cd h3
@@ -36,29 +38,32 @@ conda create -p ./env312 python=3.12 -y
 ./env312/bin/pip install -i https://pypi.tuna.tsinghua.edu.cn/simple "sglang[diffusion]"
 ```
 
-### 2. 权重
+### 2. Weights
 
 ```bash
-./download_root.sh          # 根布局（推荐）：transformer/ text_encoder/ vae/ audio_vae/ tokenizer/ processor/ + 根 json
-# 旧布局：./download_fl2va.sh
+./download_root.sh          # root layout (recommended): transformer/ text_encoder/ vae/ audio_vae/ tokenizer/ processor/ + root json
+# legacy layout: ./download_fl2va.sh
 ```
 
-### 3. 起服务
+### 3. Serve
 
 ```bash
-./serve_recipe_a.sh         # 前台常驻，另开终端发请求
+./serve_recipe_a.sh         # stays in the foreground; open another terminal to send requests
 ```
 
-### 4. 发请求
+### 4. Request
 
 ```bash
-./request_480p.sh           # 产物落到 h3/output/h3_480p_<时:分:秒>.mp4
+./request_480p.sh           # writes h3/output/h3_480p_<HH:MM:SS>.mp4
 ```
 
-接口流程：`POST /v1/videos` 建任务 → `GET /v1/videos/{id}` 轮询 `status` →
-`GET /v1/videos/{id}/content` 下载 mp4。
+API flow: `POST /v1/videos` creates a job → `GET /v1/videos/{id}` polls `status` →
+`GET /v1/videos/{id}/content` downloads the mp4.
 
-## web（规划中）
+## web (planned)
 
-`web/` 将在模型跑通后加入：FastAPI + 单页前端，任务队列串行调度（单卡一次只跑一个生成），
-每个模型一个薄 adapter，产物落 `web/data/<job_id>/`。设计见 `second-brain/notes/web-studio.md`（待写）。
+`web/` will be added once a model runs end to end: FastAPI + single-page frontend, a serial job queue (one generation at a time on a single GPU), one thin adapter per model, artifacts under `web/data/<job_id>/`. Design notes live in `second-brain/notes/web-studio.md`.
+
+---
+
+[简体中文说明](README.zh-CN.md)

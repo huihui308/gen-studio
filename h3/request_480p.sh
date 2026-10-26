@@ -5,7 +5,7 @@ OUT=${OUT:-/mnt/sdb1/soft/deploy-models/h3/output}
 PROMPT=${PROMPT:-"A red panda barista carefully pours latte art into a ceramic cup, morning sunlight, shallow depth of field."}
 mkdir -p "$OUT"
 id=$(curl -sS -X POST http://127.0.0.1:30010/v1/videos -H 'Content-Type: application/json' -d "{
-  \"model\": \"MiniMaxAI/MiniMax-H3\",
+  \"model\": \"/mnt/sdb1/soft/deploy-models/h3/models/MiniMax-H3\",
   \"prompt\": $(printf '%s' "$PROMPT" | python3 -c 'import json,sys;print(json.dumps(sys.stdin.read()))'),
   \"seconds\": 5, \"task\": \"t2va\", \"conditions\": [],
   \"target\": {\"short_edge\": 480, \"aspect_ratio\": \"16:9\", \"duration_seconds\": 5.0},

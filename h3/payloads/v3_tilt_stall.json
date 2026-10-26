@@ -1,0 +1,17 @@
+{
+  "model": "/mnt/sdb1/soft/deploy-models/h3/models/MiniMax-H3",
+  "task": "t2va",
+  "conditions": [],
+  "seconds": 10,
+  "target": {
+    "short_edge": 480,
+    "aspect_ratio": "9:16",
+    "duration_seconds": 10.0
+  },
+  "num_outputs_per_prompt": 1,
+  "num_inference_steps": 20,
+  "flow_shift": 12.0,
+  "audio_flow_shift": 3.0,
+  "seed": 1101,
+  "prompt": "Vertical 9:16 single-shot of a late-night street noodle stall, slow downward tilt. Beat one: thick white steam rising from a steel pot of simmering water at the top of the frame, warm tungsten light catching the vapor. Beat two: the tilt settles on a dark ceramic bowl of noodles on a wet wooden counter, thin steam curling off the broth, the surface reflecting the warm lamp. Beat three: the tilt continues to the rain-soaked blue street beyond the stall, neon reflections on wet asphalt, a few slow rain streaks. Smooth slow vertical camera tilt, shallow depth of field, warm key light against cool blue night. Ambient sound only: gentle simmer, rain on the awning, distant wet traffic, muffled faraway chatter. No people, no hands, no faces, no text, no subtitles, no music, no speech."
+}

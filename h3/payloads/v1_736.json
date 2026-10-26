@@ -1,0 +1,17 @@
+{
+  "model": "/mnt/sdb1/soft/deploy-models/h3/models/MiniMax-H3",
+  "task": "t2va",
+  "conditions": [],
+  "seconds": 10,
+  "target": {
+    "short_edge": 736,
+    "aspect_ratio": "9:16",
+    "duration_seconds": 10.0
+  },
+  "num_outputs_per_prompt": 1,
+  "num_inference_steps": 20,
+  "flow_shift": 12.0,
+  "audio_flow_shift": 3.0,
+  "seed": 1101,
+  "prompt": "Vertical 9:16 single-shot close-up of a late-night street noodle stall at night. Beat one: a steel pot of water at a hard rolling boil, thick white steam rising straight up through warm tungsten light, condensation beading on the metal rim. Beat two: steam thickens and fills the upper half of the frame while the boil keeps churning below. Beat three: the frame comes to rest on a dark ceramic bowl of fresh noodles and hot broth pours in from the top edge of the frame, the broth surface trembles, and steam billows up over the bowl. Static low-angle medium close-up, shallow depth of field, warm key light with a cool blue wet street behind, barely perceptible camera drift. Ambient sound only: rolling boil, broth pouring, ceramic contact, distant wet traffic. No people, no faces, no text, no subtitles, no music, no speech."
+}

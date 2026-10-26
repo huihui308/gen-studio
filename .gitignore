@@ -2,12 +2,17 @@
 
 # conda 环境（GB 级）
 h3/env/
+# 备用的 Python 3.12 环境（sglang 新版依赖要求）
+h3/env312/
 # 模型权重（FL2VA 全量 ~144 GB）
 h3/models/
 # 推理产物（mp4）
 h3/output/
 # 下载 / 安装日志
 h3/logs/
+
+# codegraph 索引库（GB 级二进制）
+.codegraph/
 
 # 本地测试用虚拟环境
 .venv-test/

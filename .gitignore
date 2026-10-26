@@ -14,6 +14,9 @@ h3/logs/
 # codegraph 索引库（GB 级二进制）
 .codegraph/
 
+# 本地私有知识库（AI 工作日志：踩坑、决策、机器细节），不对外发布
+second-brain/
+
 # 本地测试用虚拟环境
 .venv-test/
 

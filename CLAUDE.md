@@ -26,6 +26,7 @@
 
 ## 文档
 
-- `second-brain/` — 知识索引（金标准），按主题拆分，详见 `second-brain/CLAUDE.md`
+- `second-brain/` — **本地私有**知识索引（金标准，已 gitignore，不随仓库发布），按主题拆分，详见 `second-brain/CLAUDE.md`
 - `second-brain/decisions.md` — 决策记录
 - `README.md` — 仓库总览（英文主版，默认入口）；`README.zh-CN.md` 为中文版，两版需同步
+- `LICENSE` — MIT

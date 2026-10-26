@@ -7,7 +7,7 @@
 只提交脚本与文档；conda 环境、模型权重、推理产物、日志均不入库（见 `.gitignore`）。
 
 - 主远端：GitHub `git@github.com:huihui308/gen-studio.git`（`origin`）
-- 镜像远端：Gitee `git@gitee.com:huihui308/deploy-models.git`（`gitee`，仓库仍用旧名，改名后同步更新）
+- 镜像远端：`gitee`（私有仓，地址略）
 - 本机工作目录仍为 `/mnt/sdb1/soft/deploy-models`：conda 环境（`h3/env`、`h3/env312`）里已烘焙绝对路径，**暂不改目录名**，改名会让环境失效
 
 ## 目录
@@ -63,7 +63,11 @@ conda create -p ./env312 python=3.12 -y
 ## web（规划中）
 
 `web/` 将在模型跑通后加入：FastAPI + 单页前端，任务队列串行调度（单卡一次只跑一个生成），
-每个模型一个薄 adapter，产物落 `web/data/<job_id>/`。设计见 `second-brain/notes/web-studio.md`。
+每个模型一个薄 adapter，产物落 `web/data/<job_id>/`。设计笔记保存在本地私有知识库（不入库）。
+
+## License
+
+MIT，详见 [LICENSE](LICENSE)。
 
 ---
 

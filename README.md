@@ -7,7 +7,7 @@ Reproducible deployment of open-source **image and video generation models** on 
 Only scripts and docs are committed. Conda envs, model weights, inference outputs and logs stay out of git (see `.gitignore`).
 
 - Primary remote: GitHub `git@github.com:huihui308/gen-studio.git` (`origin`)
-- Mirror remote: Gitee `git@gitee.com:huihui308/deploy-models.git` (`gitee`, still the old name — update once renamed)
+- Mirror remote: `gitee` (private, address omitted)
 - The local working directory is still `/mnt/sdb1/soft/deploy-models`: the conda envs (`h3/env`, `h3/env312`) bake absolute paths, so **the directory is intentionally not renamed** — moving it breaks both envs
 
 ## Layout
@@ -62,7 +62,11 @@ API flow: `POST /v1/videos` creates a job → `GET /v1/videos/{id}` polls `statu
 
 ## web (planned)
 
-`web/` will be added once a model runs end to end: FastAPI + single-page frontend, a serial job queue (one generation at a time on a single GPU), one thin adapter per model, artifacts under `web/data/<job_id>/`. Design notes live in `second-brain/notes/web-studio.md`.
+`web/` will be added once a model runs end to end: FastAPI + single-page frontend, a serial job queue (one generation at a time on a single GPU), one thin adapter per model, artifacts under `web/data/<job_id>/`. Design notes are kept in a private local knowledge base (not published).
+
+## License
+
+MIT — see [LICENSE](LICENSE).
 
 ---
 

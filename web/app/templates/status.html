@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}运行状态{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">可观测性</p>
+    <h1>运行状态</h1>
+    <p class="lede">数据来自进程表、nvidia-smi 与模型服务自身的 HTTP 接口。无法获取的指标会明确标注为「不可用」并说明原因，本页不填充推测值。</p>
+  </div>
+  <div class="head-meta">
+    <span class="live-dot" aria-hidden="true"></span>
+    <span>每 5 秒自动刷新</span>
+    <span class="poll-state" id="poll-state" data-state="idle">等待刷新</span>
+  </div>
+</section>
+
+<div id="status-root">
+  {% include "_status_body.html" %}
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/status.js" defer></script>{% endblock %}

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Gen Studio">
+  <rect width="64" height="64" rx="12" fill="#0d1c2d"/>
+  <rect x="6" y="6" width="52" height="52" rx="9" fill="none" stroke="#b9914a" stroke-width="1.5" opacity="0.75"/>
+  <text x="32" y="41" text-anchor="middle" font-family="ui-monospace, Menlo, Consolas, monospace" font-size="21" font-weight="700" fill="#e8d3a5" letter-spacing="1">GS</text>
+</svg>

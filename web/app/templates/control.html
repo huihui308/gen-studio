@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}模型控制{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">运行编排</p>
+    <h1>模型控制</h1>
+    <p class="lede">启动或停止受支持的生成模型。启动时必须明确选择模型运行的显卡，系统不会自动选择或回退到默认显卡。</p>
+  </div>
+</section>
+
+{% if not gpus.available %}
+<div class="alert alert-warn" role="alert">
+  <strong>无法获取显卡信息：</strong>{{ gpus.error }}。<br>
+  为避免静默使用默认显卡，所有启动操作已被禁用，请修复 nvidia-smi 或驱动后刷新页面。
+</div>
+{% endif %}
+
+<div class="grid-cards">
+  {% for card in cards %}
+  <article class="card model-card" aria-labelledby="model-{{ card.spec.id }}">
+    <header class="model-head">
+      <div>
+        <p class="model-vendor">{{ card.spec.vendor }}</p>
+        <h2 class="model-name" id="model-{{ card.spec.id }}">{{ card.spec.name }}</h2>
+      </div>
+      <span class="pill pill-{{ card.tone }}">{{ card.state_label }}</span>
+    </header>
+
+    <p class="model-summary">{{ card.spec.summary }}</p>
+
+    <ul class="chips" aria-label="模型能力">
+      {% for cap in card.spec.capabilities %}
+      <li class="chip"><span class="chip-key">{{ cap.label }}</span>{{ cap.value }}</li>
+      {% endfor %}
+    </ul>
+
+    <dl class="meta-grid">
+      <div><dt>服务后端</dt><dd>{{ card.spec.backend }}</dd></div>
+      <div><dt>监听端口</dt><dd class="mono">127.0.0.1:{{ card.spec.port }}</dd></div>
+      <div><dt>运行进程</dt><dd>{% if card.pid %}PID {{ card.pid }}{% else %}—{% endif %}</dd></div>
+      <div><dt>所在显卡</dt><dd>{% if card.gpu_index is not none %}GPU {{ card.gpu_index }}{% else %}—{% endif %}</dd></div>
+    </dl>
+
+    {% if card.note %}<p class="model-note">{{ card.note }}</p>{% endif %}
+
+    <div class="card-actions">
+      <form method="post" action="/control/{{ card.spec.id }}/start" class="start-form"
+            data-model="{{ card.spec.name }}" data-gpus-available="{{ 'true' if gpus.available else 'false' }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label class="field-label" for="gpu-{{ card.spec.id }}">选择显卡 <span class="req">必选</span></label>
+        <div class="select-row">
+          <select class="select" id="gpu-{{ card.spec.id }}" name="gpu_index" required
+                  {% if not card.can_start %}disabled{% endif %}>
+            <option value="">请选择显卡…</option>
+            {% for gpu in gpus.gpus %}
+            <option value="{{ gpu.index }}">GPU {{ gpu.index }} · {{ gpu.name }} · 空闲 {{ gpu.memory_free_mb|gib }} / {{ gpu.memory_total_mb|gib }} GiB</option>
+            {% endfor %}
+          </select>
+          <button class="btn btn-primary" type="submit" {% if not card.can_start %}disabled{% endif %}>启动模型</button>
+        </div>
+        {% if not gpus.available %}
+        <p class="hint hint-warn">显卡信息不可用，无法启动。</p>
+        {% elif card.port_open and not card.managed %}
+        <p class="hint hint-warn">端口 {{ card.spec.port }} 已被占用，需先处理占用进程。</p>
+        {% elif card.pid and not card.managed %}
+        <p class="hint hint-warn">该进程由控制台之外启动，端口尚未监听（加载中）；需先停止或等待其完成加载。</p>
+        {% endif %}
+      </form>
+
+      <form method="post" action="/control/{{ card.spec.id }}/stop" class="stop-form" data-model="{{ card.spec.name }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button class="btn btn-danger-ghost" type="submit" {% if not card.can_stop %}disabled{% endif %}>停止模型</button>
+      </form>
+    </div>
+  </article>
+  {% endfor %}
+</div>
+
+<p class="footnote">
+  启动后模型需要加载权重：MiniMax H3 在本机实测约 12 分钟才通过健康检查，Qwen-Image（ComfyUI）通常更快。
+  加载进度、健康检查结果与显卡占用请见<a href="/status">运行状态</a>页。
+</p>
+{% endblock %}
+{% block scripts %}<script src="/static/control.js" defer></script>{% endblock %}

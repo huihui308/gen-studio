@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>{% block title %}{{ app_name }}{% endblock %} · {{ app_name }}</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="{% block body_class %}{% endblock %}">
+  <a class="skip-link" href="#main">跳到主要内容</a>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="/control" aria-label="{{ app_name }} 首页">
+        <span class="brand-mark" aria-hidden="true">GS</span>
+        <span class="brand-text">
+          <span class="brand-name">{{ app_name }}</span>
+          <span class="brand-sub">{{ app_subtitle }}</span>
+        </span>
+      </a>
+      <nav class="nav" aria-label="主导航">
+        <a href="/control" class="nav-link{% if active == 'control' %} is-active{% endif %}">模型控制</a>
+        <a href="/status" class="nav-link{% if active == 'status' %} is-active{% endif %}">运行状态</a>
+        <a href="/password" class="nav-link{% if active == 'password' %} is-active{% endif %}">密码设置</a>
+      </nav>
+      <div class="userbox">
+        <span class="user-name" title="当前登录用户">{{ username }}</span>
+        <form method="post" action="/logout" class="logout-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button class="btn btn-ghost btn-sm" type="submit">退出登录</button>
+        </form>
+      </div>
+    </div>
+  </header>
+
+  <main class="page" id="main">
+    {% if notice %}<div class="alert alert-success" role="status">{{ notice }}</div>{% endif %}
+    {% if error %}<div class="alert alert-error" role="alert">{{ error }}</div>{% endif %}
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="footer">
+    <span>{{ app_name }} · {{ app_subtitle }}</span>
+    <span>本机部署 · 单用户 · 仅监听 127.0.0.1</span>
+  </footer>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

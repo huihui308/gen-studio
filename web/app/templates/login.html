@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>登录 · {{ app_name }}</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="login-body">
+  <div class="login-shell">
+    <section class="login-aside">
+      <div class="login-aside-inner">
+        <div class="login-brand">
+          <span class="brand-mark brand-mark-lg" aria-hidden="true">GS</span>
+          <span class="brand-text">
+            <span class="brand-name">{{ app_name }}</span>
+            <span class="brand-sub">{{ app_subtitle }}</span>
+          </span>
+        </div>
+        <h1 class="login-headline">本机生成模型的<br>统一控制台</h1>
+        <p class="login-copy">面向 MiniMax H3 与 Qwen-Image 的运维界面：显式选择显卡后启动或停止模型，并在同一处核对真实运行状态。</p>
+        <ul class="login-points">
+          <li>启动前必须选择显卡，避免静默占用默认设备</li>
+          <li>区分本系统进程与外部进程，停止前校验归属</li>
+          <li>状态指标如实呈现，取不到的指标标注为不可用</li>
+        </ul>
+        <div class="login-aside-foot">
+          <span>MiniMax H3</span><span class="dot-sep"></span>
+          <span>Qwen-Image 2.0</span><span class="dot-sep"></span>
+          <span>2 × RTX 3080 Ti</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="login-main">
+      <div class="login-card">
+        <p class="eyebrow">身份验证</p>
+        <h2 class="login-title">登录控制台</h2>
+        <p class="login-lede">使用管理员账号继续。未登录状态下无法访问模型控制与运行状态页面。</p>
+
+        {% if error %}<div class="alert alert-error" role="alert">{{ error }}</div>{% endif %}
+
+        <form method="post" action="/login" class="form-stack" autocomplete="on">
+          <input type="hidden" name="next_path" value="{{ next_path }}">
+          <label class="field">
+            <span class="field-label">用户名</span>
+            <input class="input" type="text" name="username" value="{{ username_value or '' }}"
+                   autocomplete="username" required autofocus spellcheck="false">
+          </label>
+          <label class="field">
+            <span class="field-label">密码</span>
+            <input class="input" type="password" name="password" autocomplete="current-password" required>
+          </label>
+          <button class="btn btn-primary btn-block" type="submit">登录</button>
+        </form>
+
+        <p class="login-hint">初始凭据：<span class="mono">admin / admin</span>。登录后可在「密码设置」中修改。</p>
+      </div>
+      <p class="login-legal">{{ app_name }} · 本机部署，仅监听 127.0.0.1，不对外网开放</p>
+    </section>
+  </div>
+</body>
+</html>

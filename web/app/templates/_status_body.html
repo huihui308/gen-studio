@@ -1,0 +1,104 @@
+{% macro field_table(fields, caption) %}
+<section class="field-group" aria-label="{{ caption }}">
+  <h3 class="field-group-title">{{ caption }}</h3>
+  <table class="field-table">
+    <thead>
+      <tr><th scope="col">指标</th><th scope="col">数值</th><th scope="col">来源</th></tr>
+    </thead>
+    <tbody>
+      {% for f in fields %}
+      <tr{% if not f.available %} class="is-unavailable"{% endif %}>
+        <th scope="row">{{ f.label }}</th>
+        <td>
+          {% if f.available %}
+            {{ f.value }}
+          {% else %}
+            <span class="badge-unavailable">不可用</span>
+            {% if f.note %}<span class="unavailable-reason">{{ f.note }}</span>{% endif %}
+          {% endif %}
+        </td>
+        <td class="source">{{ f.source or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endmacro %}
+
+<section class="card status-overview" aria-labelledby="gpu-overview-title">
+  <div class="section-head">
+    <h2 class="section-title" id="gpu-overview-title">显卡概览</h2>
+    <p class="section-meta">
+      采样时间 <time class="mono" datetime="{{ payload.generated_at }}">{{ payload.generated_at_local or payload.generated_at }}</time>
+    </p>
+  </div>
+  {% if payload.gpus.available %}
+  <table class="field-table gpu-table">
+    <thead>
+      <tr>
+        <th scope="col">索引</th><th scope="col">型号</th><th scope="col">显存（已用 / 总量）</th>
+        <th scope="col">剩余</th><th scope="col">利用率</th><th scope="col">温度</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for gpu in payload.gpus["items"] %}
+      <tr>
+        <td class="mono">GPU {{ gpu.index }}</td>
+        <td>{{ gpu.name }}</td>
+        <td class="mono">{{ gpu.memory_used_mb }} / {{ gpu.memory_total_mb }} MiB</td>
+        <td class="mono">{{ gpu.memory_free_mb }} MiB</td>
+        <td class="mono">{{ gpu.utilization_pct }} %</td>
+        <td class="mono">{{ gpu.temperature_c }} °C</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="alert alert-warn" role="alert">
+    <strong>显卡信息不可用：</strong>{{ payload.gpus.error }}。因此显卡相关指标无法展示。
+  </div>
+  {% endif %}
+</section>
+
+{% for model_id, model in payload.models.items() %}
+<article class="card status-card" aria-labelledby="status-{{ model.id }}">
+  <header class="model-head">
+    <div>
+      <p class="model-vendor">{{ model.vendor }}</p>
+      <h2 class="model-name" id="status-{{ model.id }}">{{ model.name }}</h2>
+      <p class="model-summary">{{ model.summary }}</p>
+    </div>
+    <span class="pill pill-{{ model.state.tone }}">{{ model.state.label }}</span>
+  </header>
+
+  <dl class="facts-row">
+    <div><dt>进程</dt><dd>{% if model.state.pid %}<span class="mono">PID {{ model.state.pid }}</span>{% else %}—{% endif %}</dd></div>
+    <div><dt>显卡</dt><dd>{% if model.state.gpu_index is not none %}GPU {{ model.state.gpu_index }}{% if model.state.gpu_source %}<span class="fact-note">{{ model.state.gpu_source }}</span>{% endif %}{% else %}—{% endif %}</dd></div>
+    <div><dt>启动时间</dt><dd>{% if model.state.started_at %}<time class="mono" datetime="{{ model.state.started_at }}">{{ model.state.started_at }}</time>{% else %}—{% endif %}</dd></div>
+    <div><dt>运行时长</dt><dd>{% if model.state.uptime_label %}{{ model.state.uptime_label }}{% else %}—{% endif %}</dd></div>
+    <div><dt>服务端口</dt><dd class="mono">127.0.0.1:{{ model.port }} · {{ '监听中' if model.state.port_open else '未监听' }}</dd></div>
+    <div><dt>后端</dt><dd>{{ model.backend }}</dd></div>
+  </dl>
+
+  {% if model.state.note %}<p class="model-note">{{ model.state.note }}</p>{% endif %}
+
+  <div class="field-groups">
+    {{ field_table(model.runtime_fields, '运行指标') }}
+    {{ field_table(model.capability_fields, '能力与运行期信息') }}
+  </div>
+
+  <details class="log-box">
+    <summary>
+      最近日志
+      {% if model.log_path %}<span class="mono log-path">{{ model.log_path }}</span>{% endif %}
+    </summary>
+    {% if model.log_available %}
+    <pre class="log" tabindex="0">{{ model.log_tail | join('\n') }}</pre>
+    {% else %}
+    <p class="hint">日志不可用：该模型当前未运行，或无法定位其日志文件。</p>
+    {% endif %}
+  </details>
+
+  <p class="deployment-note">{{ model.deployment_note }}</p>
+</article>
+{% endfor %}

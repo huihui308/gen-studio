@@ -1,0 +1,4 @@
+# Development / test dependencies for the Gen Studio web console.
+-r requirements.txt
+pytest==9.1.1
+httpx==0.28.1

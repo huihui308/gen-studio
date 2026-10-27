@@ -1,0 +1,17 @@
+{
+  "model": "/mnt/sdb1/soft/deploy-models/h3/models/MiniMax-H3",
+  "task": "t2va",
+  "conditions": [],
+  "seconds": 10,
+  "target": {
+    "short_edge": 480,
+    "aspect_ratio": "9:16",
+    "duration_seconds": 10.0
+  },
+  "num_outputs_per_prompt": 1,
+  "num_inference_steps": 20,
+  "flow_shift": 12.0,
+  "audio_flow_shift": 3.0,
+  "seed": 1101,
+  "prompt": "integrated_multimodal_description: [Shot 1] 2D-animated, colored hand-painted scenery with stick figures, A5 historical-cartoon style, vertical 9:16 framing, Warring States Chu, a broad ink-green river under pale blue-white mist. A low-angle medium shot from the bow of a wooden ferry boat moving toward the top of the frame holds a 30–35-year-old Chu man standing at the bow with his hands clasped behind his back, his hemp robe and hem lifting in the wind. He has a round white head, a short white neck about one tenth of the head diameter, the white jaw continuing into the neck and collar with a black outline only at the sides, about four heads tall, and a head clearly narrower than his shoulders. His eyes are solid black vertical ovals, his nose a short shallow black arc, his mouth a short black line, and his eyebrows straight and slightly thick; he wears a topknot with no bangs and no beard. A deep-blue cross-collar inner robe sits under an earth-yellow hemp short jacket with a cloth belt and a hem above the knees; his bare forearms and calves are drawn with single thin black strokes, his palms are solid black ovals with one subtle thumb lobe at about eighteen percent of the head diameter and no fingers or finger gaps; he wears straw sandals and a bronze sword at his waist, the only metal glint in the frame. Behind him a 50–55-year-old boatman poles the boat: same head and neck construction, solid black vertical oval eyes, two short laugh lines at the eye corners, a slightly downturned mouth, and a short gray beard ringing the jaw without covering the neck connection; his topknot is hidden under a wide-brim bamboo hat, he wears an earth-brown coarse hemp jacket with rolled sleeves and a rope belt, his lower legs are bare, and he has straw sandals, the same black mitten-like palms, a bamboo pole, and a slight stoop. The camera pushes in with small amplitude at slow speed along the gunwale at a low angle, with wet wood, rope, and river water filling the foreground. [Shot 2] At 00:03.000, the camera cuts to a low-angle shot as the boat jolts: the bronze sword slips from its scabbard and falls vertically toward the river, turning once. The camera tracks the falling sword and tilts down with small amplitude at fast speed, keeping it on the central vertical axis while the Chu man's hand reaches too late and the boat keeps moving toward the top of the frame. [Shot 3] At 00:07.000, the camera cuts back to the same section of gunwale as the sword enters the water and a white splash bursts up into the foreground, briefly wiping across the lens; the river surface settles while the Chu man leans over the side with one black palm on the wood, staring down.\n\noverall_soundscape: A broad river current runs under steady wind through hemp cloth, with the wooden hull creaking beneath the two men. A short metallic slip and hiss comes from the scabbard, followed by a clean splash and water droplets falling onto wet wood. Distant water birds call across the river as the surface settles.\n\nnon_diegetic_music: N/A"
+}

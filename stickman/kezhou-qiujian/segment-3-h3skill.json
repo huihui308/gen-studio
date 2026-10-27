@@ -1,0 +1,17 @@
+{
+  "model": "/mnt/sdb1/soft/deploy-models/h3/models/MiniMax-H3",
+  "task": "t2va",
+  "conditions": [],
+  "seconds": 10,
+  "target": {
+    "short_edge": 480,
+    "aspect_ratio": "9:16",
+    "duration_seconds": 10.0
+  },
+  "num_outputs_per_prompt": 1,
+  "num_inference_steps": 20,
+  "flow_shift": 12.0,
+  "audio_flow_shift": 3.0,
+  "seed": 1101,
+  "prompt": "integrated_multimodal_description: [Shot 1] 2D-animated, colored hand-painted scenery with stick figures, A5 historical-cartoon style, vertical 9:16 framing, Warring States Chu, a broad ink-green river under pale blue-white mist. The bow of a wooden ferry boat slides onto a shallow shore in a level side view, and a 30–35-year-old Chu man stands on deck pointing at one horizontal notch carved into the gunwale. He has a round white head, a short white neck about one tenth of the head diameter, the white jaw continuing into the neck and collar with a black outline only at the sides, about four heads tall, and a head clearly narrower than his shoulders. His eyes are solid black vertical ovals, his nose a short shallow black arc, his mouth a short black line, and his eyebrows straight and slightly thick; he wears a small topknot with no bangs and no beard on his chin, cheeks, or upper lip. A deep-blue cross-collar inner robe sits under an earth-yellow hemp short jacket with a cloth belt and a hem above the knees; his bare forearms and calves are drawn with single thin black strokes, his palms are solid black ovals with one subtle thumb lobe at about eighteen percent of the head diameter and no fingers or finger gaps; he wears straw sandals and a bronze sword at his waist, the only metal glint in the frame. He pushes off the gunwale and jumps into the river, and the camera tracks his jump with small amplitude at slow speed in a level side view until the splash swallows the frame. [Shot 2] At 00:03.000, the camera cuts to a low-angle underwater view in green river water: the Chu man gropes beneath the notch, his solid black vertical oval eyes open, his eyebrows straight and his mouth a short black line, bubbles rising past his white head and empty black palm. The riverbed below him is sand and small pale pebbles, and no sword lies on it. The camera holds a static shot as his hand sweeps across the sand with small amplitude at slow speed. [Shot 3] At 00:07.000, the camera cuts to the river surface as the Chu man breaks through it, wet and dripping, and holds up one empty black palm. The camera pulls out and pedestals up with large amplitude at slow speed into a high overhead view: the wooden ferry waits at the shallow shore, the ink-green river stretches away toward pale mist, and one tiny metal glint flashes at the distant center of the river. The shot ends on that distant glint and the wide river surface.\n\noverall_soundscape: Water slaps the wooden hull as the bow touches the shallow shore under wind across the river. A jump is followed by a clean splash, then underwater bubbles and a muffled current before the surface breaks with water dripping from cloth. A single distant bird calls as the river surface settles.\n\nnon_diegetic_music: N/A"
+}

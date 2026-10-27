@@ -55,6 +55,35 @@
     });
   });
 
+
+  document.querySelectorAll("form.access-form").forEach(function (form) {
+    var submit = form.querySelector('button[type="submit"]');
+    form.addEventListener("submit", function (event) {
+      var checked = form.querySelector('input[name="access_host"]:checked');
+      if (!checked) {
+        event.preventDefault();
+        return;
+      }
+      var model = form.getAttribute("data-model") || "该模型";
+      var current = form.getAttribute("data-current") || "";
+      if (checked.value === current) {
+        return;
+      }
+      var message =
+        model + " 的模型访问地址将由 " + current + " 改为 " + checked.value + "。\n\n" +
+        "保存只写入配置，下次启动该模型时生效；若模型正在运行，需要先停止再重新启动，" +
+        "新的监听地址才会生效。\n\n继续保存？";
+      if (!window.confirm(message)) {
+        event.preventDefault();
+        return;
+      }
+      if (submit) {
+        submit.disabled = true;
+        submit.textContent = "正在保存…";
+      }
+    });
+  });
+
   document.querySelectorAll("form.stop-form").forEach(function (form) {
     var submit = form.querySelector('button[type="submit"]');
     if (!submit || submit.hasAttribute("disabled")) {

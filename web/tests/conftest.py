@@ -2,7 +2,8 @@
 
 The tests never touch the real H3 / ComfyUI processes or the real
 ``web/data`` directory.  Model entry scripts are replaced by tiny bash
-launchers that record ``CUDA_VISIBLE_DEVICES`` and then sleep, which exercises
+launchers that record ``CUDA_VISIBLE_DEVICES`` / ``GEN_STUDIO_MODEL_HOST`` and then sleep,
+which exercises
 the real spawn / ownership / stop code paths without loading a model.
 """
 
@@ -23,6 +24,7 @@ H3_SCRIPT = """\
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s' "$CUDA_VISIBLE_DEVICES" > "$(cd "$(dirname "$0")/.." && pwd)/gpu-h3.txt"
+printf '%s' "${GEN_STUDIO_MODEL_HOST:-}" > "$(cd "$(dirname "$0")/.." && pwd)/host-h3.txt"
 exec -a "sglang MiniMax-H3" sleep 60
 """
 
@@ -30,6 +32,7 @@ QWEN_SCRIPT = """\
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s' "$CUDA_VISIBLE_DEVICES" > "$(cd "$(dirname "$0")/.." && pwd)/gpu-qwen.txt"
+printf '%s' "${GEN_STUDIO_MODEL_HOST:-}" > "$(cd "$(dirname "$0")/.." && pwd)/host-qwen.txt"
 exec -a "ComfyUI/main.py --port 30020" sleep 60
 """
 

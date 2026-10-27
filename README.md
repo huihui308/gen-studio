@@ -189,7 +189,7 @@ All sizes fit; peak VRAM stays pinned at ~11.7/12 GiB because ComfyUI streams qu
 
 1. **Login** — username/password only; default `admin / admin`, PBKDF2 hashes on disk, server-side sessions; every functional page redirects to `/login` when unauthenticated.
 2. **Password settings** — `/password` changes the password (current password + policy + CSRF) and revokes other sessions.
-3. **Model control** — start/stop **MiniMax H3** and **Qwen-Image 2.0**; starting requires an explicit GPU selection and injects `CUDA_VISIBLE_DEVICES`; when `nvidia-smi` yields no GPUs the page says so and refuses to start rather than using a default.
+3. **Model control** — start/stop **MiniMax H3** and **Qwen-Image 2.0**; starting requires an explicit GPU selection and injects `CUDA_VISIBLE_DEVICES`; each model also has its own listen-address setting (`127.0.0.1` / `0.0.0.0`) injected as `GEN_STUDIO_MODEL_HOST` on the next start (default loopback); when `nvidia-smi` yields no GPUs the page says so and refuses to start rather than using a default.
 4. **Run status** — reads `/proc`, `nvidia-smi`, and each model's own HTTP API; unavailable metrics are labelled unavailable with a reason (e.g. SGLang exposes no queue endpoint).
 5. **Business-style UI** — navy/gold console styling, white cards, status pills, responsive layout.
 

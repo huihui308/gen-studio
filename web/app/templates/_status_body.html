@@ -60,8 +60,26 @@
   {% endif %}
 </section>
 
-{% for model_id, model in payload.models.items() %}
-<article class="card status-card" aria-labelledby="status-{{ model.id }}">
+{% set models = payload.models %}
+<div class="status-tabs" role="tablist" aria-label="模型运行状态">
+  {% for model_id, model in models.items() %}
+  <button class="status-tab" type="button" role="tab"
+          id="status-tab-{{ model_id }}" data-status-tab="{{ model_id }}"
+          aria-controls="status-panel-{{ model_id }}"
+          aria-selected="{{ 'true' if loop.first else 'false' }}"
+          tabindex="{{ '0' if loop.first else '-1' }}">
+    <span class="status-tab-id">{{ model_id }}</span>
+    <span class="status-tab-name">{{ model.name }}</span>
+    <span class="pill pill-{{ model.state.tone }}">{{ model.state.label }}</span>
+  </button>
+  {% endfor %}
+</div>
+
+<div class="status-panels">
+{% for model_id, model in models.items() %}
+<article class="card status-card status-panel" id="status-panel-{{ model_id }}"
+         role="tabpanel" aria-labelledby="status-tab-{{ model_id }}"
+         data-model-panel="{{ model_id }}"{% if not loop.first %} hidden{% endif %}>
   <header class="model-head">
     <div>
       <p class="model-vendor">{{ model.vendor }}</p>
@@ -76,7 +94,7 @@
     <div><dt>显卡</dt><dd>{% if model.state.gpu_index is not none %}GPU {{ model.state.gpu_index }}{% if model.state.gpu_source %}<span class="fact-note">{{ model.state.gpu_source }}</span>{% endif %}{% else %}—{% endif %}</dd></div>
     <div><dt>启动时间</dt><dd>{% if model.state.started_at %}<time class="mono" datetime="{{ model.state.started_at }}">{{ model.state.started_at }}</time>{% else %}—{% endif %}</dd></div>
     <div><dt>运行时长</dt><dd>{% if model.state.uptime_label %}{{ model.state.uptime_label }}{% else %}—{% endif %}</dd></div>
-    <div><dt>服务端口</dt><dd class="mono">127.0.0.1:{{ model.port }} · {{ '监听中' if model.state.port_open else '未监听' }}</dd></div>
+    <div><dt>服务端口</dt><dd class="mono">端口 {{ model.port }} · {{ '监听中' if model.state.port_open else '未监听' }}</dd></div>
     <div><dt>后端</dt><dd>{{ model.backend }}</dd></div>
   </dl>
 
@@ -102,3 +120,4 @@
   <p class="deployment-note">{{ model.deployment_note }}</p>
 </article>
 {% endfor %}
+</div>

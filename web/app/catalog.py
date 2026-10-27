@@ -72,7 +72,7 @@ CATALOG: dict[str, ModelSpec] = {
         # Measured on this workstation: ~12 min from launch to "ready".
         startup_timeout_seconds=1200,
         process_markers=("sglang", "MiniMax-H3"),
-        deployment_note="由 h3/serve_recipe_a.sh 启动；监听 127.0.0.1:30010。",
+        deployment_note="由 h3/serve_recipe_a.sh 启动；端口 30010，监听地址由控制台按模型配置注入（默认 127.0.0.1）。",
     ),
     "qwen-image2.0": ModelSpec(
         id="qwen-image2.0",
@@ -93,7 +93,7 @@ CATALOG: dict[str, ModelSpec] = {
         health_label="GET /system_stats",
         startup_timeout_seconds=600,
         process_markers=("ComfyUI/main.py", "30020"),
-        deployment_note="由 qwen-image/serve.sh 启动；监听 127.0.0.1:30020。",
+        deployment_note="由 qwen-image/serve.sh 启动；端口 30020，监听地址由控制台按模型配置注入（默认 127.0.0.1）。",
     ),
 }
 

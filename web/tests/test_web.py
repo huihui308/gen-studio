@@ -6,6 +6,7 @@ The tests drive the real FastAPI routes and the real process manager; only
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -17,6 +18,7 @@ from fastapi.testclient import TestClient
 import app.status as status_module
 from app import proc
 from app.manager import Detection, ModelManager, StartError, StopError
+from app.modelaccess import ModelAccessStore
 from app.status import _HttpResult
 
 from app.proc import ProcInfo
@@ -325,6 +327,8 @@ def test_start_passes_selected_gpu_and_stop_kills_it(make_app, settings):
     assert state.pid is not None
     assert state.gpu_index == 1
     assert (settings.repo_root / "gpu-qwen.txt").read_text() == "1"
+    # No model-level access override means loopback (the pre-existing default).
+    assert (settings.repo_root / "host-qwen.txt").read_text() == "127.0.0.1"
 
     detection = app.state.manager.detect("qwen-image2.0")
     assert detection.managed is True
@@ -735,3 +739,146 @@ def test_external_loading_state_is_starting(settings, monkeypatch):
     assert payload["state"]["code"] == "starting"
     assert payload["state"]["label"] == "启动中（外部进程）"
     assert "端口尚未监听" in payload["state"]["note"]
+
+
+def test_direct_get_to_start_and_stop_never_changes_state(client, settings):
+    login(client)
+    for path, needle in (
+        ("/control/minimax-h3/start", "直接访问不会启动"),
+        ("/control/minimax-h3/stop", "直接访问不会停止"),
+    ):
+        response = client.get(path, follow_redirects=False)
+        assert response.status_code == 303
+        assert response.headers["location"].startswith("/control?error=")
+    assert not (settings.repo_root / "gpu-h3.txt").exists()
+    assert client.get("/api/status").json()["models"]["minimax-h3"]["state"]["code"] == "stopped"
+
+
+# ------------------------------------------------------ per-model access address
+def test_control_page_offers_independent_model_access_choices(client):
+    login(client)
+    page = client.get("/control")
+    assert page.status_code == 200
+    assert page.text.count('name="access_host"') == 4
+    for model_id in ("minimax-h3", "qwen-image2.0"):
+        assert f'action="/control/{model_id}/access"' in page.text
+    assert page.text.count("已保存 <code>127.0.0.1</code> · 下次启动生效") == 2
+    assert "模型访问地址" in page.text
+
+
+def test_model_access_change_is_saved_and_used_on_next_start(make_app, settings):
+    app = make_app()
+    client = TestClient(app)
+    login(client)
+    token = csrf_token(client, "/control")
+
+    response = client.post(
+        "/control/minimax-h3/access",
+        data={"access_host": "0.0.0.0", "csrf_token": token},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert "notice=" in response.headers["location"]
+
+    path = settings.data_dir / "model_access.json"
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    assert saved["minimax-h3"] == "0.0.0.0"
+    assert saved["qwen-image2.0"] == "127.0.0.1"
+    assert oct(path.stat().st_mode & 0o777) == "0o600"
+
+    page = client.get("/control")
+    assert "0.0.0.0:30010" in page.text
+    assert "127.0.0.1:30020" in page.text
+
+    response = client.post(
+        "/control/minimax-h3/start",
+        data={"csrf_token": token, "gpu_index": "1"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert "notice=" in response.headers["location"]
+    assert (settings.repo_root / "host-h3.txt").read_text() == "0.0.0.0"
+    # The other model is untouched and was not started.
+    assert not (settings.repo_root / "host-qwen.txt").exists()
+
+    app.state.manager.stop("minimax-h3")
+
+
+def test_model_access_is_independent_per_model(client, settings):
+    login(client)
+    token = csrf_token(client, "/control")
+    response = client.post(
+        "/control/qwen-image2.0/access",
+        data={"access_host": "0.0.0.0", "csrf_token": token},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    saved = json.loads((settings.data_dir / "model_access.json").read_text(encoding="utf-8"))
+    assert saved["qwen-image2.0"] == "0.0.0.0"
+    assert saved["minimax-h3"] == "127.0.0.1"
+
+
+def test_model_access_rejects_unknown_host(client, settings):
+    login(client)
+    token = csrf_token(client, "/control")
+    last = None
+    for bad in ("192.168.1.5", "localhost", "example.com"):
+        response = client.post(
+            "/control/minimax-h3/access",
+            data={"access_host": bad, "csrf_token": token},
+            follow_redirects=False,
+        )
+        assert response.status_code == 303
+        assert "error=" in response.headers["location"]
+        last = response
+    assert not (settings.data_dir / "model_access.json").exists()
+    page = client.get(last.headers["location"])
+    assert "模型访问地址只能是 127.0.0.1 或 0.0.0.0" in page.text
+
+
+def test_model_access_requires_csrf(client, settings):
+    login(client)
+    response = client.post(
+        "/control/minimax-h3/access",
+        data={"access_host": "0.0.0.0", "csrf_token": "forged"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert "error=" in response.headers["location"]
+    assert not (settings.data_dir / "model_access.json").exists()
+
+
+def test_direct_get_to_model_access_returns_friendly_redirect(client, settings):
+    login(client)
+    for model_id in ("minimax-h3", "qwen-image2.0"):
+        response = client.get(f"/control/{model_id}/access", follow_redirects=False)
+        assert response.status_code == 303
+        assert response.headers["location"].startswith("/control?error=")
+    page = client.get(response.headers["location"])
+    assert "需要通过页面表单保存" in page.text
+    assert "直接访问该地址不会修改任何配置" in page.text
+    assert not (settings.data_dir / "model_access.json").exists()
+
+
+def test_model_access_store_invalid_file_falls_back(tmp_path):
+    path = tmp_path / "model_access.json"
+    path.write_text("{not json", encoding="utf-8")
+    store = ModelAccessStore(path)
+    assert store.get("minimax-h3") == "127.0.0.1"
+    assert store.get("qwen-image2.0") == "127.0.0.1"
+    assert store.error is not None
+
+
+def test_status_page_uses_model_tabs(client):
+    login(client)
+    page = client.get("/status")
+    assert page.status_code == 200
+    assert 'role="tablist"' in page.text
+    assert 'data-status-tab="minimax-h3"' in page.text
+    assert 'data-status-tab="qwen-image2.0"' in page.text
+    assert 'id="status-panel-minimax-h3"' in page.text
+    assert 'id="status-panel-qwen-image2.0"' in page.text
+    # The first panel is selected on first render; the second is hidden.
+    assert page.text.count('role="tabpanel"') == 2
+    assert page.text.count(" data-model-panel=") == 2
+    assert page.text.count(" hidden") == 1

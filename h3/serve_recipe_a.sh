@@ -2,6 +2,7 @@
 # MiniMax-H3 FL2VA，官方 "Recipe A"（12 GB VRAM + 32 GB host 档，SGLang cookbook）：
 # DiT / 文本编码器 / VAE 全部 layerwise offload 流式进显存，仅 video_vae 的 36 个 decoder block 在解码阶段常驻。
 # 本机：默认只用一张卡（CUDA_VISIBLE_DEVICES=1，另一张空闲，可用环境变量覆盖）。起服务后另开终端跑 ./request_480p.sh
+# 监听地址默认 127.0.0.1，可由 GEN_STUDIO_MODEL_HOST=0.0.0.0 覆盖（web 控制台的「模型访问地址」会注入）。
 #
 # 两个必须的 CUDA/JIT 修补（否则第一条请求 build JIT kernel 就失败）：
 #   1. sglang 用 $CUDA_HOME/bin/nvcc 编译 kernel，且带 `-std=c++20`：系统 /usr/local/cuda 若指向 11.8 会报
@@ -31,4 +32,4 @@ exec "$H3/env312/bin/sglang" serve \
   --performance-mode memory \
   --layerwise-offload-components dit,text_encoder,vae \
   --layerwise-resident-layers video_vae=36 \
-  --host 127.0.0.1 --port 30010 "$@"
+  --host "${GEN_STUDIO_MODEL_HOST:-127.0.0.1}" --port 30010 "$@"

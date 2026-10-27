@@ -9,6 +9,13 @@
   </div>
 </section>
 
+{% if access_error %}
+<div class="alert alert-warn" role="alert">
+  <strong>模型访问地址配置异常：</strong>{{ access_error }}。<br>
+  当前按默认值 <code>127.0.0.1</code> 展示；保存任一模型后会用有效值重写该文件。
+</div>
+{% endif %}
+
 {% if not gpus.available %}
 <div class="alert alert-warn" role="alert">
   <strong>无法获取显卡信息：</strong>{{ gpus.error }}。<br>
@@ -37,12 +44,46 @@
 
     <dl class="meta-grid">
       <div><dt>服务后端</dt><dd>{{ card.spec.backend }}</dd></div>
-      <div><dt>监听端口</dt><dd class="mono">127.0.0.1:{{ card.spec.port }}</dd></div>
+      <div><dt>监听地址（配置）</dt><dd class="mono">{{ card.access_host }}:{{ card.spec.port }}</dd></div>
       <div><dt>运行进程</dt><dd>{% if card.pid %}PID {{ card.pid }}{% else %}—{% endif %}</dd></div>
       <div><dt>所在显卡</dt><dd>{% if card.gpu_index is not none %}GPU {{ card.gpu_index }}{% else %}—{% endif %}</dd></div>
     </dl>
 
     {% if card.note %}<p class="model-note">{{ card.note }}</p>{% endif %}
+
+    <form method="post" action="/control/{{ card.spec.id }}/access" class="access-form"
+          data-model="{{ card.spec.name }}" data-current="{{ card.access_host }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="access-head">
+        <span class="field-label">模型访问地址 <span class="req">必选</span></span>
+        <span class="access-current">已保存 <code>{{ card.access_host }}</code> · 下次启动生效</span>
+      </div>
+      <div class="access-options" role="radiogroup" aria-label="{{ card.spec.name }} 模型访问地址">
+        <label class="access-option{% if card.access_host == '127.0.0.1' %} is-selected{% endif %}">
+          <input type="radio" name="access_host" value="127.0.0.1"
+                 {% if card.access_host == '127.0.0.1' %}checked{% endif %}>
+          <span class="access-option-body">
+            <span class="access-option-title">仅本机 <code>127.0.0.1</code></span>
+            <span class="access-option-desc">模型只监听回环地址，其他机器无法直接访问。</span>
+          </span>
+        </label>
+        <label class="access-option{% if card.access_host == '0.0.0.0' %} is-selected{% endif %}">
+          <input type="radio" name="access_host" value="0.0.0.0"
+                 {% if card.access_host == '0.0.0.0' %}checked{% endif %}>
+          <span class="access-option-body">
+            <span class="access-option-title">局域网 <code>0.0.0.0</code></span>
+            <span class="access-option-desc">监听所有网卡，局域网机器可访问模型的 {{ card.spec.port }} 端口。</span>
+          </span>
+        </label>
+      </div>
+      <div class="access-actions">
+        <button class="btn btn-outline" type="submit">保存访问地址</button>
+        <span class="hint">
+          保存后下次启动该模型时生效{% if card.pid or card.port_open %}；当前进程仍在运行，需先停止再重新启动{% endif %}。
+          选 <code>0.0.0.0</code> 时请确认主机防火墙放行 {{ card.spec.port }}/tcp；模型 API 本身无鉴权，仅限局域网。
+        </span>
+      </div>
+    </form>
 
     <div class="card-actions">
       <form method="post" action="/control/{{ card.spec.id }}/start" class="start-form"

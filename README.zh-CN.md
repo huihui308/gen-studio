@@ -188,7 +188,7 @@ ComfyUI 首次启动约 4 分钟（import + CUDA JIT），日志停在 `Using py
 
 1. **登录** — 仅用户名 + 密码，默认 `admin / admin`；密码以 PBKDF2 哈希落盘，服务端会话；未登录访问任一功能页统一跳转 `/login`。
 2. **密码设置** — `/password` 修改密码（校验当前密码、策略与 CSRF），并注销其它会话。
-3. **模型控制** — 启动 / 停止 **MiniMax H3** 与 **Qwen-Image 2.0**；启动必须显式选择显卡并注入 `CUDA_VISIBLE_DEVICES`；`nvidia-smi` 取不到显卡时明确提示并拒绝启动，绝不静默使用默认卡。
+3. **模型控制** — 启动 / 停止 **MiniMax H3** 与 **Qwen-Image 2.0**；启动必须显式选择显卡并注入 `CUDA_VISIBLE_DEVICES`；每个模型还可独立设置监听地址（`127.0.0.1` / `0.0.0.0`），下次启动时注入 `GEN_STUDIO_MODEL_HOST`（默认回环）；`nvidia-smi` 取不到显卡时明确提示并拒绝启动，绝不静默使用默认卡。
 4. **运行状态** — 数据来自 `/proc`、`nvidia-smi` 与模型自身 HTTP API；无法获取的指标标注「不可用」并说明原因（例如 SGLang 未暴露队列接口）。
 5. **商务风界面** — 深海军蓝 + 暗金、白色卡片、状态药丸、响应式布局。
 

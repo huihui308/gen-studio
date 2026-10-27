@@ -321,7 +321,7 @@ class StatusCollector:
         fields.append(
             field(
                 "服务端口",
-                f"127.0.0.1:{spec.port}（{'监听中' if detection.port_open else '未监听'}）",
+                f"端口 {spec.port}（{'监听中' if detection.port_open else '未监听'}）",
                 available=True,
                 source="socket / ss",
             )

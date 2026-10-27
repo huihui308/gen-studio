@@ -13,6 +13,69 @@
 
   var inFlight = false;
   var timer = null;
+  var activeTab = null;
+
+  function tabButtons() {
+    return Array.prototype.slice.call(root.querySelectorAll("[data-status-tab]"));
+  }
+
+  function applyTab() {
+    var buttons = tabButtons();
+    if (!buttons.length) {
+      return;
+    }
+    var found = buttons.some(function (button) {
+      return button.getAttribute("data-status-tab") === activeTab;
+    });
+    if (!found) {
+      activeTab = buttons[0].getAttribute("data-status-tab");
+    }
+    buttons.forEach(function (button) {
+      var selected = button.getAttribute("data-status-tab") === activeTab;
+      button.setAttribute("aria-selected", selected ? "true" : "false");
+      button.setAttribute("tabindex", selected ? "0" : "-1");
+    });
+    root.querySelectorAll("[data-model-panel]").forEach(function (panel) {
+      panel.hidden = panel.getAttribute("data-model-panel") !== activeTab;
+    });
+  }
+
+  root.addEventListener("click", function (event) {
+    var button = event.target.closest ? event.target.closest("[data-status-tab]") : null;
+    if (!button || !root.contains(button)) {
+      return;
+    }
+    activeTab = button.getAttribute("data-status-tab");
+    applyTab();
+  });
+
+  root.addEventListener("keydown", function (event) {
+    var button = event.target.closest ? event.target.closest("[data-status-tab]") : null;
+    if (!button) {
+      return;
+    }
+    var buttons = tabButtons();
+    var index = buttons.indexOf(button);
+    if (index < 0) {
+      return;
+    }
+    var next = null;
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+      next = buttons[(index + 1) % buttons.length];
+    } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+      next = buttons[(index - 1 + buttons.length) % buttons.length];
+    } else if (event.key === "Home") {
+      next = buttons[0];
+    } else if (event.key === "End") {
+      next = buttons[buttons.length - 1];
+    }
+    if (next) {
+      event.preventDefault();
+      activeTab = next.getAttribute("data-status-tab");
+      applyTab();
+      next.focus();
+    }
+  });
 
   function setPollState(kind, text) {
     if (!pollState) {
@@ -93,6 +156,7 @@
       })
       .then(function (html) {
         root.innerHTML = html;
+        applyTab();
         restoreDetails(root, opened);
         localizeTimes(root);
         setPollState("ok", "已同步 " + new Date().toLocaleTimeString("zh-CN", { hour12: false }));
@@ -130,6 +194,7 @@
   });
 
   localizeTimes(root);
+  applyTab();
   refresh();
   schedule();
 })();

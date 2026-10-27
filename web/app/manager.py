@@ -24,6 +24,7 @@ from . import proc
 from .catalog import CATALOG, ModelSpec, get_spec
 from .config import Settings
 from .gpu import GpuProbe
+from .modelaccess import MODEL_ACCESS_HOSTS
 
 
 class ControlError(Exception):
@@ -300,10 +301,14 @@ class ModelManager:
         return cleaned[-lines:]
 
     # ------------------------------------------------------------------- start
-    def start(self, model_id: str, gpu_index: int | None) -> ModelState:
+    def start(
+        self, model_id: str, gpu_index: int | None, access_host: str | None = None
+    ) -> ModelState:
         spec = get_spec(model_id)
         if spec is None:
             raise StartError(f"未知模型：{model_id}")
+        if access_host is not None and access_host not in MODEL_ACCESS_HOSTS:
+            raise StartError("模型访问地址只能是 127.0.0.1 或 0.0.0.0")
 
         with self._lock:
             state = self._states[model_id]
@@ -348,14 +353,19 @@ class ModelManager:
             env["CUDA_VISIBLE_DEVICES"] = str(gpu_index)
             env["PYTHONUNBUFFERED"] = "1"
             env.setdefault("TOKENIZERS_PARALLELISM", "false")
+            if access_host is not None:
+                # The entry script passes this to SGLang / ComfyUI; it defaults
+                # to loopback when a model is started outside the console.
+                env["GEN_STUDIO_MODEL_HOST"] = access_host
             cwd = self.settings.repo_root / spec.working_dir_rel
             if not cwd.is_dir():
                 raise StartError(f"模型工作目录不存在：{cwd}")
 
             with open(log_path, "ab") as log_handle:
+                bind_label = access_host or "脚本默认（127.0.0.1）"
                 header = (
                     f"\n===== [{_now_iso()}] start {model_id} on GPU {gpu_index} "
-                    f"({gpu.name}) via web console =====\n"
+                    f"({gpu.name}), bind {bind_label} via web console =====\n"
                 )
                 log_handle.write(header.encode("utf-8"))
                 log_handle.flush()

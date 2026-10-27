@@ -1,0 +1,17 @@
+{
+  "model": "/mnt/sdb1/soft/deploy-models/h3/models/MiniMax-H3",
+  "task": "t2va",
+  "conditions": [],
+  "seconds": 10,
+  "target": {
+    "short_edge": 736,
+    "aspect_ratio": "9:16",
+    "duration_seconds": 10.0
+  },
+  "num_outputs_per_prompt": 1,
+  "num_inference_steps": 20,
+  "flow_shift": 12.0,
+  "audio_flow_shift": 3.0,
+  "seed": 1101,
+  "prompt": "integrated_multimodal_description: Vertical 9:16 A5 historical-cartoon film, colored hand-painted scenery with stick figures, Warring States Chu, a broad ink-green river under pale blue-white mist. [Shot 1] From 00:00.000 to 00:03.000: at water level, the white splash from the previous shot disperses. The same 30–35-year-old Chu man pulls a short knife from his sleeve and crouches beside the same section of gunwale; his dark-blue cross-collar inner robe, earth-yellow hemp short jacket, cloth belt, bare forearms, black mitten-like palms, topknot, and bronze sword at his waist remain identical to Segment 1. The same 50–55-year-old boatman stands behind him in the background, poling with a bamboo pole and shaking his head; his wide-brim bamboo hat, short gray beard, earth-brown hemp jacket, rope belt, bare lower legs, and slight stoop remain identical. The boat still moves toward the top of the frame. [Shot 2] At 00:03.000, cut to a close-up of the knife tip carving one horizontal notch into the gunwale; small wood shavings curl and fall. The notch is on the same gunwale section, centered in the vertical frame. The knife is the only sharp metal glint besides the bronze sword at his waist. [Shot 3] At 00:07.000, the Chu man rises, presses one black palm over the notch, and points at the river with the other hand, certain of himself. The boatman keeps poling in the background and shakes his head again. The camera rises from a low angle to a level view, keeping the notch centered; the boat continues toward the top of the frame.\noverall_soundscape: Diegetic only: river water lapping the hull, a short metallic slip as the knife leaves the sleeve, a soft scrape of the blade cutting wood, wood shavings falling, bamboo pole creaking, a quiet exhale, wind over the river. No speech, no voiceover, no narration, no dialogue, no music.\nnon_diegetic_music: None. Do not generate music; the final guqin, xiao, and low drum score is added in post-production.\nNegative constraints: no on-screen text, letters, numbers, captions, subtitles, signage, logos, or watermarks; no speech bubbles; no photorealistic or 3D humans; no realistic facial features; no extra limbs, fingers, or detached hands; no neck gaps; no beard covering the neck connection; no extra characters, modern objects, or style drift; no morphing, camera shake, or color notation."
+}

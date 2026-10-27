@@ -1,17 +1,19 @@
 # Gen Studio — 本机生成模型 Web 控制台
 
 `web/` 是 `deploy-models` 仓库的可视化控制台：登录后启动 / 停止 **MiniMax H3** 与
-**Qwen-Image 2.0** 两个生成模型，指定运行显卡，并在状态页核对真实运行情况。
-技术栈为 FastAPI + Jinja2 服务端渲染 + 原生 CSS/JS，无前端构建步骤。控制台默认
-默认监听 `127.0.0.1:8090`；部署时可用 `GEN_STUDIO_HOST` 或 `web/data/settings.json` 改为 `0.0.0.0`
+**Qwen-Image 2.0** 两个生成模型，指定运行显卡，并在状态页核对真实运行情况；
+另提供 H3 视频生成页，可直接提交提示词、查看进度并播放结果。技术栈为
+FastAPI + Jinja2 服务端渲染 + 原生 CSS/JS，无前端构建步骤。控制台默认
+监听 `127.0.0.1:8090`；部署时可用 `GEN_STUDIO_HOST` 或 `web/data/settings.json` 改为 `0.0.0.0`
 （保存后需重启，见下文）。每个模型另有独立的**模型访问地址**（`127.0.0.1` /
 `0.0.0.0`），决定该模型进程自身监听在回环还是所有网卡；默认回环。
 
-> 范围严格限定为需求中的 5 项功能。这里**没有**生成请求、任务队列、作品画廊、
-> 用户注册、模型下载或公网暴露入口；控制台监听地址只影响控制台自身，
-> 模型访问地址只影响对应模型端口。默认二者都不对局域网暴露；只有显式把某个
-> 模型的访问地址设为 `0.0.0.0` 时，该模型端口（H3 30010 / ComfyUI 30020）才会
-> 对可达网络开放，且模型 API 没有鉴权，仅限局域网使用。
+> 前 5 项为最初约定的范围；视频生成页是后续按要求新增的页面，不改变前 5 项行为。
+> 这里**没有**作品画廊、生成历史列表、用户注册、模型下载或公网暴露入口；控制台
+> 监听地址只影响控制台自身，模型访问地址只影响对应模型端口。默认二者都不对
+> 局域网暴露；只有显式把某个模型的访问地址设为 `0.0.0.0` 时，该模型端口
+> （H3 30010 / ComfyUI 30020）才会对可达网络开放，且模型 API 没有鉴权，仅限
+> 局域网使用。视频生成页只调用本机 H3，不代理 Qwen-Image。
 
 ## 快速开始
 
@@ -44,6 +46,7 @@ GEN_STUDIO_DATA_DIR=./data .venv/bin/python -m uvicorn app.main:app --host 127.0
 | 3 | 模型控制：启动 / 停止，必须选择显卡；可分别配置模型访问地址 | `/control` 为两个模型各渲染一张卡片；启动表单强制选择 GPU（占位项「请选择显卡…」不可提交，服务端再次校验 `gpu_index` 必填且必须存在于实时 `nvidia-smi` 列表）；启动时以 `CUDA_VISIBLE_DEVICES=<所选卡>` 与 `GEN_STUDIO_MODEL_HOST=<该模型的访问地址>` 调起 `h3/serve_recipe_a.sh` / `qwen-image/serve.sh`；每张卡片可独立把模型监听地址保存为 `127.0.0.1` 或 `0.0.0.0`；停止对本系统进程组 SIGTERM → 等待 → SIGKILL | 无显卡信息时页面明确提示并禁用启动；不选显卡提交会被拒绝且不会启动进程；选定显卡启动后 `nvidia-smi` 可见占用；点击停止后进程与端口释放 |
 | 4 | 运行状态页 | `/status` 服务端渲染，`/status/partial` 每 5 秒刷新；数据源为 `/proc`、`nvidia-smi`、模型自身 HTTP API；每个指标都带 `available` / `source` / `note`，取不到的值显示「不可用」并写明原因；H3 / Qwen 两块状态以 Sheet 页签切换，一次只显示一个 | 打开「运行状态」：出现 `minimax-h3` / `qwen-image2.0` 两个页签，点击只显示对应模型；H3 显示健康检查、PID、GPU 占用、SGLang 运行期信息；其队列与生成耗时明确标注不可用；Qwen-Image 显示 ComfyUI 版本与真实队列 |
 | 5 | 商务风视觉 | `app/static/app.css`：深海军蓝 + 暗金点缀、白色卡片、细边框表格、状态药丸、登录页左右分栏；无外部字体/CDN，CSP 保持严格 | 直接观察登录页、模型控制页、运行状态页的排版与配色 |
+| 6 | H3 视频生成（后续扩展） | `/generate`：提示词多行输入；分辨率默认 480（短边，可选 736）、时长默认 10 秒（4–15 秒）、画幅固定 16:9；`POST /api/generate` 调用本机 H3 `/v1/videos`，后台线程轮询 `/v1/videos/{id}`，成功后下载 MP4 到 `web/data/generated/`；`GET /api/generate/{id}` 返回进度；`GET /api/generate/{id}/video` 返回需登录的视频流。H3 未运行时页面明确提示，失败保留输入 | 打开「视频生成」：默认 480 / 10 秒；输入提示词提交后看到排队/生成/下载进度；完成后播放视频并回显本次提示词与参数；空提示词、非法分辨率/时长、H3 未启动均有可见中文错误 |
 
 ## 目录结构
 
@@ -57,16 +60,17 @@ web/
 │   ├── main.py              # FastAPI 应用、路由、鉴权依赖、安全响应头
 │   ├── config.py            # Settings / 路径 / 默认账号
 │   ├── modelaccess.py       # 每个模型独立的访问地址（web/data/model_access.json）
+│   ├── generation.py        # H3 视频生成任务：校验、提交、轮询、下载
 │   ├── auth.py              # PBKDF2 密码、用户库、会话与 CSRF
 │   ├── gpu.py               # nvidia-smi 探测（绝不回退默认显卡）
 │   ├── catalog.py           # 两个受支持模型的静态能力与启动配置
 │   ├── manager.py           # 启动 / 停止 / 归属识别 / 状态持久化
 │   ├── proc.py              # /proc、ss、端口、进程组工具
 │   ├── status.py            # 状态采集（如实标注不可用）
-│   ├── templates/           # base / login / control / status / password
-│   └── static/              # app.css / status.js / control.js / favicon.svg
-├── tests/                   # pytest：登录、改密、显卡必选、启停、状态
-└── data/（运行时生成，不入库）  # auth.json / state.json / model_access.json / logs/
+│   ├── templates/           # base / login / control / generate / status / password
+│   └── static/              # app.css / generate.js / status.js / control.js / favicon.svg
+├── tests/                   # pytest：登录、改密、显卡必选、启停、状态、生成
+└── data/（运行时生成，不入库）  # auth.json / state.json / model_access.json / logs/ / generated/
 ```
 
 ## 关键实现
@@ -134,6 +138,27 @@ web/
 - 直接 GET `/control/<model_id>/access` 不会修改配置：返回 303 回控制页，并提示
   保存必须使用页面按钮（POST）。
 
+### H3 视频生成
+
+- `/generate` 是登录后才能访问的页面：提示词多行输入，分辨率默认 `480`（可选
+  `736`，对应 H3 `target.short_edge`），时长默认 `10` 秒（可选 4–15 秒，对应
+  `seconds` 与 `target.duration_seconds`），画幅固定 `16:9`。
+- 浏览器只负责表单与进度展示。`POST /api/generate` 校验参数后，同步调用 H3
+  `POST /v1/videos` 拿到任务 id，再交给后台 daemon 线程轮询 `GET /v1/videos/{id}`；
+  完成后从 `GET /v1/videos/{id}/content` 下载 MP4 到 `web/data/generated/<job_id>.mp4`。
+  页面每 2 秒读取 `GET /api/generate/{id}` 更新进度，完成后把视频地址设为
+  `GET /api/generate/{id}/video`（同样需要登录）。
+- 固定生成参数：`task=t2va`、`conditions=[]`、`num_outputs_per_prompt=1`、
+  `num_inference_steps=20`、`flow_shift=12.0`、`audio_flow_shift=3.0`、`seed=1101`；
+  模型 id 默认绝对路径 `h3/models/MiniMax-H3`。
+- 空/纯空白提示词、超长提示词、非 480/736 分辨率、4–15 之外的时长都会在服务端
+  拒绝并返回中文错误，不会静默截断或改写；H3 连接失败返回 502，页面保留输入。
+- 任务状态与结果只保存在控制台进程内存中：重启控制台后旧任务无法从页面继续查看
+  （已下载的 MP4 仍在 `web/data/generated/`，但当前实现没有历史列表）。后台线程
+  只服务当前进程；H3 未启动时页面会提示先去「模型控制」启动。
+- H3 本身没有鉴权；`/api/generate/*` 由控制台的登录会话保护，视频文件只通过
+  鉴权端点提供，不挂静态目录。
+
 ### 运行状态（诚实呈现）
 
 - 每个字段为 `{label, value, available, source, note}`；`available=false` 时
@@ -167,11 +192,12 @@ web/
 |----------|--------|------|
 | `GEN_STUDIO_HOST` | 未设置 | 监听地址覆盖；优先于 `settings.json`，仅接受 `127.0.0.1` / `0.0.0.0` |
 | `GEN_STUDIO_PORT` | `8090` | 监听端口 |
-| `GEN_STUDIO_DATA_DIR` | `web/data` | `auth.json`、`state.json`、日志目录 |
+| `GEN_STUDIO_DATA_DIR` | `web/data` | `auth.json`、`state.json`、日志、下载视频目录 |
 | `GEN_STUDIO_REPO_ROOT` | `web/..` | 仓库根目录（定位模型入口脚本） |
 | `GEN_STUDIO_NVIDIA_SMI` | `nvidia-smi` | nvidia-smi 路径 |
 | `GEN_STUDIO_SESSION_TTL` | `43200` | 会话有效期（秒） |
 | `GEN_STUDIO_MODEL_HOST` | `127.0.0.1` | 控制台启动模型时按模型配置注入；脚本内默认回环，通常不需要手动设置 |
+| `GEN_STUDIO_H3_BASE_URL` | `http://127.0.0.1:30010` | 视频生成页调用的 H3 API 地址；H3 按模型配置监听 `0.0.0.0` 时仍可用回环访问 |
 
 运行时文件：
 
@@ -180,13 +206,14 @@ web/
 - `web/data/auth.json` — 单用户凭据（0600，仅哈希）。
 - `web/data/state.json` — 本系统启动的模型进程记录（0600，用于重启后核对归属）。
 - `web/data/logs/<model>.log` — 由控制台启动的模型 stdout/stderr。
+- `web/data/generated/<job_id>.mp4` — 视频生成成功后下载的 MP4（目录 0700、文件 0600；没有历史索引）。
 
 ## 测试
 
 ```bash
 cd web
 uv pip install -r requirements-dev.txt
-.venv/bin/python -m pytest        # 42 项，约 40 秒
+.venv/bin/python -m pytest        # 57 项，约 40 秒
 ```
 
 测试使用临时仓库 + 假启动脚本 + 假 `nvidia-smi`，不会触碰真实模型进程或
@@ -196,7 +223,8 @@ uv pip install -r requirements-dev.txt
 H3 真实 API 字段映射、Qwen 队列读取、状态片段鉴权、商务风静态资源、
 每个模型访问地址的独立保存、0600 权限、默认回环、启动时注入
 `GEN_STUDIO_MODEL_HOST`、非法值拒绝、CSRF、按模型互不影响，以及对写操作端点
-直接发 GET 时的友好重定向。
+直接发 GET 时的友好重定向。生成相关覆盖：页面默认 480/10、空提示词与非法参数、
+CSRF、未登录 401、异步任务成功/失败、视频端点、提示词回显与 502 提交失败。
 
 ## 手动验收清单
 
@@ -212,16 +240,22 @@ H3 真实 API 字段映射、Qwen 队列读取、状态片段鉴权、商务风�
 7. 在 H3 卡片把「模型访问地址」设为 `0.0.0.0` 保存 → 启动 H3 后 `ss -ltn` 应显示
    `0.0.0.0:30010`（Qwen-Image 同理为 `0.0.0.0:30020`）；局域网机器可直接访问该
    端口。改回 `127.0.0.1` 并重启模型后，监听应回到 `127.0.0.1`。
-8. 观察三个页面的商务风样式：深蓝顶栏、白色卡片、暗金强调线、状态药丸。
+8. 打开「视频生成」→ 默认 `480` / `10 秒`；直接提交空提示词应被拦截；填入提示词并
+   确保 H3 已启动后提交 → 看到已用时间、生成/下载状态，完成后视频可播放，结果区回显
+   本次提示词与参数；把分辨率改成 `736`、时长改成 `6` 再提交，H3 请求应按新参数发出。
+9. 观察三个页面的商务风样式：深蓝顶栏、白色卡片、暗金强调线、状态药丸。
 
 ## 边界与已知限制
 
 - 只控制需求指定的两个模型；不提供任意命令执行或自定义脚本入口。
-- 不发起生成请求，因此状态页不展示生成任务内容；H3 的队列 / 耗时指标不可用。
+- 视频生成只支持 H3 的 `t2va` 纯文本任务；不支持图生视频、首尾帧、音频参考或
+  多模型切换。生成页没有任务历史/队列管理，任务状态仅在控制台进程内存中，
+  重启后旧任务不能再从页面打开（已下载文件仍在 `web/data/generated/`）。
+- H3 的 `/v1/videos/{id}` 只返回 `queued` 或最终 `completed/failed`，不提供百分比
+  进度；生成页因此显示已用时间与不确定进度条，不编造百分比。状态页的 H3 队列 /
+  耗时接口同样不可用，两者是不同数据源。
 - 控制台监听地址由部署配置决定；模型端口是否对局域网开放由各模型独立的
-  「模型访问地址」决定（默认回环）。即使把模型设为 `0.0.0.0`，控制台仍没有生成
-  请求入口，生成仍需使用仓库内脚本或直接调用模型 API；这些 API 没有鉴权，只应
-  在可信局域网内使用。
+  「模型访问地址」决定（默认回环）。模型 API 没有鉴权，只应在可信局域网内使用。
 - 控制台仍只有 admin 单账号 + HTTP，不含公网暴露、HTTPS、登录限速或多用户鉴权。
 - 会话为进程内存储，控制台重启后需重新登录；systemd 按 cgroup 管理，重启控制台
   会连带结束它启动的模型进程。归属记录仍在 `state.json`，重启后会被重新核对。

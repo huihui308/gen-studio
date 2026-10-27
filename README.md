@@ -185,13 +185,14 @@ All sizes fit; peak VRAM stays pinned at ~11.7/12 GiB because ComfyUI streams qu
 
 ## web console
 
-`web/` is a FastAPI + Jinja2 console (no frontend build step) bound to `127.0.0.1:8090`. Its scope is limited to five operational requirements:
+`web/` is a FastAPI + Jinja2 console (no frontend build step) bound to `127.0.0.1:8090` by default. Its original scope is five operational requirements; a sixth page for H3 video generation was added later:
 
 1. **Login** — username/password only; default `admin / admin`, PBKDF2 hashes on disk, server-side sessions; every functional page redirects to `/login` when unauthenticated.
 2. **Password settings** — `/password` changes the password (current password + policy + CSRF) and revokes other sessions.
 3. **Model control** — start/stop **MiniMax H3** and **Qwen-Image 2.0**; starting requires an explicit GPU selection and injects `CUDA_VISIBLE_DEVICES`; each model also has its own listen-address setting (`127.0.0.1` / `0.0.0.0`) injected as `GEN_STUDIO_MODEL_HOST` on the next start (default loopback); when `nvidia-smi` yields no GPUs the page says so and refuses to start rather than using a default.
 4. **Run status** — reads `/proc`, `nvidia-smi`, and each model's own HTTP API; unavailable metrics are labelled unavailable with a reason (e.g. SGLang exposes no queue endpoint).
 5. **Business-style UI** — navy/gold console styling, white cards, status pills, responsive layout.
+6. **H3 video generation (later extension)** — `/generate` submits a text prompt to the local H3 `/v1/videos` API, polls the job, shows progress, then plays the downloaded MP4 and echoes the prompt and parameters. Defaults: 480 short edge, 10 seconds, fixed 16:9; duration is 4–15 seconds. Jobs live in console memory and there is no gallery or history list.
 
 ```bash
 cd web
@@ -200,7 +201,7 @@ uv pip install -r requirements.txt
 ./serve.sh          # http://127.0.0.1:8090
 ```
 
-There is no generation/job/gallery feature. Details, requirement-by-requirement verification, security notes and tests: [`web/README.md`](web/README.md).
+Details, requirement-by-requirement verification, security notes and tests: [`web/README.md`](web/README.md).
 
 ## License
 

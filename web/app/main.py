@@ -1,9 +1,10 @@
 """FastAPI application: login, password settings, model control and status.
 
-Scope is deliberately limited to the five specified requirements:
-authentication, password change, starting/stopping the two supported
-generation models on an explicitly selected GPU, a run-status page and a
-business-style UI.  There is no generation/job/gallery feature here.
+Scope covers the console requirements: authentication, password change,
+starting/stopping the two supported generation models on an explicitly
+selected GPU, a run-status page, the business-style UI, and the H3
+text-to-video generation page (submit, progress, playback).  There is no
+gallery or multi-user workspace feature here.
 """
 
 from __future__ import annotations
@@ -16,7 +17,13 @@ from pathlib import Path
 from urllib.parse import quote, urlsplit
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    Response,
+)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -32,6 +39,16 @@ from .auth import (
 )
 from .catalog import CATALOG, MODEL_ORDER
 from .config import APP_NAME, APP_SUBTITLE, SESSION_COOKIE, Settings
+from .generation import (
+    ASPECT_RATIO,
+    DEFAULT_DURATION,
+    DEFAULT_RESOLUTION,
+    DURATIONS,
+    RESOLUTIONS,
+    GenerationError,
+    GenerationManager,
+    GenerationValidationError,
+)
 from .gpu import GpuProbe
 from .manager import ControlError, ModelManager
 from .modelaccess import ModelAccessError, ModelAccessStore
@@ -106,6 +123,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     manager = ModelManager(settings, gpu_probe)
     collector = StatusCollector(settings, gpu_probe, manager)
     model_access_store = ModelAccessStore(settings.data_dir / "model_access.json")
+    generation_manager = GenerationManager(settings)
 
     app = FastAPI(
         title=f"{APP_NAME} 控制台",
@@ -120,6 +138,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.manager = manager
     app.state.collector = collector
     app.state.model_access_store = model_access_store
+    app.state.generation_manager = generation_manager
 
     templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
     templates.env.filters["gib"] = lambda mb: f"{mb / 1024:.1f}" if mb is not None else "—"
@@ -417,6 +436,74 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except ControlError as exc:
             return _redirect("/control", error=str(exc))
         return _redirect("/control", notice=message)
+
+    @app.get("/generate", response_class=HTMLResponse)
+    async def generate_page(request: Request):
+        session = require_user(request)
+        detection = manager.detect("minimax-h3")
+        return render(
+            request,
+            "generate.html",
+            session=session,
+            active="generate",
+            resolutions=RESOLUTIONS,
+            durations=DURATIONS,
+            default_resolution=DEFAULT_RESOLUTION,
+            default_duration=DEFAULT_DURATION,
+            aspect_ratio=ASPECT_RATIO,
+            h3_port_open=detection.port_open,
+            h3_loading=bool(detection.pid and not detection.port_open),
+        )
+
+    @app.post("/api/generate")
+    async def api_generate(
+        request: Request,
+        prompt: str = Form(""),
+        resolution: str = Form(""),
+        duration: str = Form(""),
+        csrf_token: str = Form(""),
+    ):
+        session = require_user(request)
+        if not csrf_ok(session, csrf_token):
+            return JSONResponse(
+                {"error": "会话校验失败，请刷新页面后重试"}, status_code=403
+            )
+        try:
+            job = request.app.state.generation_manager.start(
+                prompt, resolution, duration
+            )
+        except GenerationValidationError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        except GenerationError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=502)
+        return JSONResponse({"job": job}, status_code=201)
+
+    @app.get("/api/generate/{job_id}/video")
+    async def api_generate_video(request: Request, job_id: str):
+        require_user(request)
+        path = request.app.state.generation_manager.video_path(job_id)
+        if path is None:
+            return JSONResponse(
+                {"error": "视频尚未生成完成，或任务不存在"}, status_code=404
+            )
+        return FileResponse(
+            path,
+            media_type="video/mp4",
+            headers={
+                "Content-Disposition": f'inline; filename="h3-{job_id}.mp4"',
+                "Cache-Control": "private, no-store",
+            },
+        )
+
+    @app.get("/api/generate/{job_id}")
+    async def api_generate_status(request: Request, job_id: str):
+        require_user(request)
+        job = request.app.state.generation_manager.get(job_id)
+        if job is None:
+            return JSONResponse(
+                {"error": "生成任务不存在或已过期"}, status_code=404
+            )
+        return JSONResponse({"job": job})
 
     @app.get("/status", response_class=HTMLResponse)
     async def status_page(request: Request):

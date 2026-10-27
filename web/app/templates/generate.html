@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}视频生成{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">H3 推理</p>
+    <h1>视频生成</h1>
+    <p class="lede">输入提示词，调用本机 MiniMax H3 生成带音轨视频。生成过程在后台执行，页面会持续显示进度；完成后可直接播放，并回显本次实际使用的提示词与参数。</p>
+  </div>
+</section>
+
+{% if not h3_port_open %}
+<div class="alert alert-warn" role="status">
+  <strong>H3 服务当前{% if h3_loading %}正在加载{% else %}未运行{% endif %}：</strong>
+  {% if h3_loading %}
+  端口尚未开始监听，提交会失败；请等待加载完成，可在<a href="/status">运行状态</a>页查看进度，无需重复启动。
+  {% else %}
+  提交会失败，请先在<a href="/control">模型控制</a>页启动 MiniMax H3，并等待运行状态页显示“运行中”。
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="generate-layout">
+  <section class="card generate-card" aria-labelledby="generate-form-title">
+    <header class="card-head">
+      <div>
+        <p class="eyebrow">生成参数</p>
+        <h2 id="generate-form-title">提示词与输出设置</h2>
+      </div>
+    </header>
+
+    <form id="generate-form" action="/api/generate" method="post" class="generate-form" novalidate>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+      <div class="field">
+        <label class="field-label" for="prompt">提示词 <span class="req">必填</span></label>
+        <textarea class="input textarea" id="prompt" name="prompt" rows="9" maxlength="20000"
+                  placeholder="描述画面、镜头、动作、光线与声音，例如：清晨的街角面包店，镜头缓慢推近，蒸汽从刚出炉的面包上升起，环境声只有街道远处的声音。"
+                  required></textarea>
+        <div class="field-foot">
+          <span>提示词会原样发给 H3，并在生成结果中回显。</span>
+          <span id="prompt-count" class="mono">0 / 20000</span>
+        </div>
+      </div>
+
+      <div class="param-grid">
+        <div class="field">
+          <label class="field-label" for="resolution">分辨率</label>
+          <select class="select" id="resolution" name="resolution">
+            {% for value in resolutions %}
+            <option value="{{ value }}"{% if value == default_resolution %} selected{% endif %}>
+              {{ value }}{% if value == 480 %} · 快速（短边 480）{% else %} · 高清（短边 736）{% endif %}
+            </option>
+            {% endfor %}
+          </select>
+          <p class="hint">映射到 H3 的 <code>target.short_edge</code>。默认 480。</p>
+        </div>
+
+        <div class="field">
+          <label class="field-label" for="duration">时长</label>
+          <select class="select" id="duration" name="duration">
+            {% for value in durations %}
+            <option value="{{ value }}"{% if value == default_duration %} selected{% endif %}>{{ value }} 秒</option>
+            {% endfor %}
+          </select>
+          <p class="hint">映射到 H3 的 <code>seconds</code> 与 <code>target.duration_seconds</code>。默认 10 秒。</p>
+        </div>
+      </div>
+
+      <div class="generate-note">
+        画幅固定为 {{ aspect_ratio }}；H3 单段支持 4–15 秒。生成时间取决于分辨率与队列，长任务请保持页面打开。
+      </div>
+
+      <div class="form-error" id="generate-error" role="alert" hidden></div>
+
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit" id="generate-submit">生成视频</button>
+        <span class="hint" id="generate-hint">提交后会显示已用时间与下载进度；H3 不返回百分比生成进度，生成期间按钮会禁用。</span>
+      </div>
+    </form>
+  </section>
+
+  <section class="card result-card" aria-labelledby="result-title" aria-live="polite">
+    <header class="card-head">
+      <div>
+        <p class="eyebrow">生成结果</p>
+        <h2 id="result-title">输出</h2>
+      </div>
+      <span class="pill pill-neutral" id="job-pill">未开始</span>
+    </header>
+
+    <div class="result-empty" id="generate-idle">
+      <p>提交提示词后，这里会显示生成进度、视频与本次实际使用的提示词。</p>
+    </div>
+
+    <div id="generate-progress" hidden>
+      <div class="progress-head">
+        <span id="job-stage">已提交</span>
+        <span class="mono" id="job-percent">无百分比</span>
+      </div>
+      <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progress-track">
+        <div class="progress-bar" id="progress-bar"></div>
+      </div>
+      <dl class="meta-grid result-meta">
+        <div><dt>已用时间</dt><dd class="mono" id="job-elapsed">0 秒</dd></div>
+        <div><dt>分辨率</dt><dd class="mono" id="job-resolution">—</dd></div>
+        <div><dt>时长</dt><dd class="mono" id="job-duration">—</dd></div>
+      </dl>
+      <p class="hint">H3 未提供进度时，进度条会保持不确定状态；生成仍会在后台继续。</p>
+    </div>
+
+    <div id="generate-result" hidden>
+      <div class="video-wrap">
+        <video id="result-video" controls playsinline preload="metadata"></video>
+      </div>
+      <div class="result-block">
+        <h3>本次使用的提示词</h3>
+        <pre class="prompt-echo" id="result-prompt"></pre>
+      </div>
+      <dl class="meta-grid result-meta">
+        <div><dt>分辨率</dt><dd class="mono" id="result-resolution">—</dd></div>
+        <div><dt>时长</dt><dd class="mono" id="result-duration">—</dd></div>
+        <div><dt>画幅</dt><dd class="mono">{{ aspect_ratio }}</dd></div>
+        <div><dt>生成耗时</dt><dd class="mono" id="result-elapsed">—</dd></div>
+      </dl>
+      <p class="hint">视频地址需要登录后才能访问；本页不提供历史记录或分享链接。</p>
+    </div>
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/generate.js" defer></script>{% endblock %}

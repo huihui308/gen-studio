@@ -1,6 +1,6 @@
 # gen-studio
 
-在本机（2 × RTX 3080 Ti 12 GB）上部署开源生图 / 生视频模型的可复现脚本仓库，外加访问这些模型的 web 控制台（`web/`，已实现，仅登录/改密、模型启停、运行状态五项）：环境构建 → 权重下载 → 起服务 → 发请求 → 界面，**一个模型一个子目录**。当前两条线：`h3/`（MiniMax-H3 FL2VA + SGLang，视频）与 `qwen-image/`（Qwen-Image-2.1-Turbo + ComfyUI，生图）。
+在本机（2 × RTX 3080 Ti 12 GB）上部署开源生图 / 生视频模型的可复现脚本仓库，外加访问这些模型的 web 控制台（`web/`，已实现：登录/改密、模型启停与按模型访问地址、运行状态，以及 H3 视频生成页）：环境构建 → 权重下载 → 起服务 → 发请求 → 界面，**一个模型一个子目录**。当前两条线：`h3/`（MiniMax-H3 FL2VA + SGLang，视频）与 `qwen-image/`（Qwen-Image-2.1-Turbo + ComfyUI，生图）。
 
 - 起服务：`cd h3 && ./serve_recipe_a.sh`（默认监听 `127.0.0.1:30010`，可用 `GEN_STUDIO_MODEL_HOST` 覆盖）
 - 发请求：另开终端 `cd h3 && ./request_480p.sh`（产物落 `h3/output/`）

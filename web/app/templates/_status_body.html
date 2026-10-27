@@ -91,6 +91,7 @@
 
   <dl class="facts-row">
     <div><dt>进程</dt><dd>{% if model.state.pid %}<span class="mono">PID {{ model.state.pid }}</span>{% else %}—{% endif %}</dd></div>
+    {% if model.state.unit_name %}<div><dt>systemd 单元</dt><dd class="mono">{{ model.state.unit_name }}</dd></div>{% endif %}
     <div><dt>显卡</dt><dd>{% if model.state.gpu_index is not none %}GPU {{ model.state.gpu_index }}{% if model.state.gpu_source %}<span class="fact-note">{{ model.state.gpu_source }}</span>{% endif %}{% else %}—{% endif %}</dd></div>
     <div><dt>启动时间</dt><dd>{% if model.state.started_at %}<time class="mono" datetime="{{ model.state.started_at }}">{{ model.state.started_at }}</time>{% else %}—{% endif %}</dd></div>
     <div><dt>运行时长</dt><dd>{% if model.state.uptime_label %}{{ model.state.uptime_label }}{% else %}—{% endif %}</dd></div>

@@ -1,10 +1,11 @@
-"""Start / stop the two generation models as real OS processes.
+"""Start / stop the two generation models.
 
-Each model is launched through its repository entry script with an explicit
-``CUDA_VISIBLE_DEVICES`` value chosen by the operator.  The manager records
-the PID, process group, start tick, GPU index and log path in
-``web/data/state.json`` so ownership survives console restarts and PID reuse
-is detected rather than killing an unrelated process.
+In production each model is launched in its own transient systemd user unit so
+that restarting the web console does not terminate a running model.  The
+manager writes the per-start environment (GPU and listen host), starts the
+unit, and records the unit name plus the observed PID in
+``web/data/state.json``.  Tests and non-systemd environments can still use the
+legacy in-process ``Popen`` launcher when units are disabled.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from .catalog import CATALOG, ModelSpec, get_spec
 from .config import Settings
 from .gpu import GpuProbe
 from .modelaccess import MODEL_ACCESS_HOSTS
+from .units import SystemdUserUnits, UnitError, UnitStatus
 
 
 class ControlError(Exception):
@@ -50,6 +52,7 @@ class ModelState:
     started_at: float | None = None
     start_ticks: int | None = None
     log_path: str | None = None
+    unit_name: str | None = None
     last_status: str = "stopped"  # stopped | starting | failed
     last_error: str | None = None
     updated_at: float = field(default_factory=time.time)
@@ -73,6 +76,7 @@ class Detection:
     port_open: bool
     log_path: str | None
     note: str | None
+    unit_name: str | None = None
 
 
 def _now_iso() -> str:
@@ -86,11 +90,16 @@ class ModelManager:
         gpu_probe: GpuProbe,
         catalog: dict[str, ModelSpec] | None = None,
         process_finder=None,
+        unit_controller: SystemdUserUnits | None = None,
     ) -> None:
         self.settings = settings
         self.gpu_probe = gpu_probe
         self.catalog = catalog or CATALOG
         self._process_finder = process_finder or proc.find_processes_by_markers
+        self._units = unit_controller
+        if self._units is None and settings.model_units_enabled:
+            self._units = SystemdUserUnits()
+        self._use_units = bool(self._units is not None and self._units.available())
         self._lock = threading.RLock()
         self._procs: dict[str, subprocess.Popen[bytes]] = {}
         self._states: dict[str, ModelState] = {}
@@ -117,7 +126,7 @@ class ModelManager:
             entry = (models_raw or {}).get(model_id) if isinstance(models_raw, dict) else None
             if isinstance(entry, dict):
                 state = ModelState(model_id=model_id)
-                for key in ("pid", "pgid", "gpu_index", "started_at", "start_ticks", "log_path", "last_status", "last_error", "updated_at"):
+                for key in ("pid", "pgid", "gpu_index", "started_at", "start_ticks", "log_path", "unit_name", "last_status", "last_error", "updated_at"):
                     if key in entry:
                         setattr(state, key, entry[key])
                 self._states[model_id] = state
@@ -141,11 +150,53 @@ class ModelManager:
         with self._lock:
             return self._states[model_id]
 
+    def _unit_name(self, model_id: str) -> str:
+        assert self._units is not None
+        return self._units.unit_name(model_id)
+
+    def _unit_status(self, model_id: str) -> UnitStatus | None:
+        if not self._use_units or self._units is None:
+            return None
+        try:
+            return self._units.status(self._unit_name(model_id))
+        except UnitError:
+            return None
+
+    def uses_systemd_units(self) -> bool:
+        return self._use_units
+
     def _reconcile(self) -> None:
-        """Bring persisted ownership in line with the processes actually alive."""
+        """Bring persisted ownership in line with the units/processes alive."""
         with self._lock:
             changed = False
             for model_id, state in self._states.items():
+                unit_status = self._unit_status(model_id)
+                if unit_status is not None and unit_status.active:
+                    state.unit_name = unit_status.name
+                    pid = unit_status.main_pid
+                    if pid is not None:
+                        info = proc.proc_info(pid)
+                        state.pid = pid
+                        state.pgid = info.pgid if info else pid
+                        state.start_ticks = info.start_ticks if info else state.start_ticks
+                    if state.last_status not in {"starting", "failed"}:
+                        state.last_status = "starting"
+                    changed = True
+                    continue
+
+                if state.unit_name:
+                    # The console now owns this model through a unit, but the
+                    # unit is no longer active.  Do not fall back to a stale
+                    # PID from the unit's previous run.
+                    if state.last_status == "starting":
+                        state.last_status = "failed"
+                        state.last_error = "systemd 单元已停止（控制台重启后发现模型已退出）"
+                    state.pid = None
+                    state.pgid = None
+                    state.unit_name = None
+                    changed = True
+                    continue
+
                 if state.pid is None:
                     continue
                 info = proc.proc_info(state.pid)
@@ -190,7 +241,16 @@ class ModelManager:
         return self._identity_ok(model_id, state, proc.proc_info(state.pid))
 
     def _mark_failed_if_needed(self, model_id: str, state: ModelState) -> None:
-        """Persist a failure note once when an owned process died."""
+        """Persist a failure note once when an owned process/unit died."""
+        unit_status = self._unit_status(model_id)
+        if unit_status is not None and unit_status.active:
+            return
+        if state.unit_name and unit_status is not None:
+            if state.last_status == "starting":
+                state.last_status = "failed"
+                state.last_error = "systemd 单元已停止（模型进程退出）"
+                self._persist()
+            return
         if state.pid is None:
             return
         if proc.is_alive(state.pid) and self._managed_identity(model_id, state):
@@ -210,10 +270,42 @@ class ModelManager:
         spec = self.catalog[model_id]
         state = self.state(model_id)
         with self._lock:
-            self._mark_failed_if_needed(model_id, state)
-            managed = self._managed_identity(model_id, state)
             listener = proc.listener_pid(spec.port)
             port_is_open = proc.port_open(spec.port)
+            unit_status = self._unit_status(model_id)
+            if unit_status is not None and unit_status.active:
+                pid = unit_status.main_pid or listener
+                info = proc.proc_info(pid) if pid else None
+                gpu_env = proc.proc_cuda_visible_devices(pid) if pid else None
+                gpu_index = (
+                    int(gpu_env)
+                    if gpu_env and gpu_env.isdigit()
+                    else state.gpu_index
+                )
+                return Detection(
+                    model_id=model_id,
+                    managed=True,
+                    pid=pid,
+                    pgid=info.pgid if info else (pid or None),
+                    cmdline=info.cmdline if info else None,
+                    start_epoch=state.started_at or (proc.proc_start_epoch(pid) if pid else None),
+                    gpu_index=gpu_index,
+                    gpu_source=(
+                        f"进程环境 CUDA_VISIBLE_DEVICES={gpu_env}"
+                        if gpu_env
+                        else ("systemd 单元启动记录" if gpu_index is not None else None)
+                    ),
+                    listener_pid=listener,
+                    unmanaged=False,
+                    marker_match=False,
+                    port_open=port_is_open,
+                    log_path=state.log_path or str(self.settings.model_log_path(model_id)),
+                    note=f"由独立 systemd 单元 {unit_status.name} 管理；重启控制台不会停止模型",
+                    unit_name=unit_status.name,
+                )
+
+            self._mark_failed_if_needed(model_id, state)
+            managed = self._managed_identity(model_id, state)
             managed_pid = state.pid if managed else None
             managed_info = proc.proc_info(managed_pid) if managed_pid else None
 
@@ -349,42 +441,103 @@ class ModelManager:
 
             log_path = self.settings.model_log_path(model_id)
             log_path.parent.mkdir(parents=True, exist_ok=True)
-            env = os.environ.copy()
-            env["CUDA_VISIBLE_DEVICES"] = str(gpu_index)
-            env["PYTHONUNBUFFERED"] = "1"
-            env.setdefault("TOKENIZERS_PARALLELISM", "false")
+            base_env = os.environ.copy()
+            base_env["CUDA_VISIBLE_DEVICES"] = str(gpu_index)
+            base_env["PYTHONUNBUFFERED"] = "1"
+            base_env.setdefault("TOKENIZERS_PARALLELISM", "false")
             if access_host is not None:
                 # The entry script passes this to SGLang / ComfyUI; it defaults
                 # to loopback when a model is started outside the console.
-                env["GEN_STUDIO_MODEL_HOST"] = access_host
+                base_env["GEN_STUDIO_MODEL_HOST"] = access_host
             cwd = self.settings.repo_root / spec.working_dir_rel
             if not cwd.is_dir():
                 raise StartError(f"模型工作目录不存在：{cwd}")
 
+            bind_label = access_host or "脚本默认（127.0.0.1）"
+            header = (
+                f"\n===== [{_now_iso()}] start {model_id} on GPU {gpu_index} "
+                f"({gpu.name}), bind {bind_label} via web console =====\n"
+            )
             with open(log_path, "ab") as log_handle:
-                bind_label = access_host or "脚本默认（127.0.0.1）"
-                header = (
-                    f"\n===== [{_now_iso()}] start {model_id} on GPU {gpu_index} "
-                    f"({gpu.name}), bind {bind_label} via web console =====\n"
-                )
                 log_handle.write(header.encode("utf-8"))
                 log_handle.flush()
+
+            if self._use_units and self._units is not None:
+                unit = self._unit_name(model_id)
+                # Pass only the environment the model needs; inheriting the
+                # console's whole environment into a transient unit would also
+                # leak unrelated variables.
+                unit_env = {
+                    "CUDA_VISIBLE_DEVICES": str(gpu_index),
+                    "PYTHONUNBUFFERED": "1",
+                    "TOKENIZERS_PARALLELISM": base_env.get("TOKENIZERS_PARALLELISM", "false"),
+                }
+                if access_host is not None:
+                    unit_env["GEN_STUDIO_MODEL_HOST"] = access_host
                 try:
+                    self._units.start(unit, script, cwd, unit_env, log_path)
+                except UnitError as exc:
+                    state.last_status = "failed"
+                    state.last_error = f"无法启动 systemd 单元：{exc}"
+                    self._persist()
+                    raise StartError(f"无法启动 {spec.name}：{exc}") from exc
+
+                deadline = time.monotonic() + 3.0
+                unit_status = None
+                while time.monotonic() < deadline:
+                    unit_status = self._unit_status(model_id)
+                    if unit_status is not None and unit_status.active and unit_status.main_pid:
+                        break
+                    time.sleep(0.1)
+                if (
+                    unit_status is None
+                    or not unit_status.active
+                    or unit_status.main_pid is None
+                ):
+                    tail = self.log_tail(model_id, lines=6)
+                    detail = " | ".join(tail[-3:]) if tail else "日志为空"
+                    state.pid = None
+                    state.pgid = None
+                    state.unit_name = unit
+                    state.gpu_index = None
+                    state.last_status = "failed"
+                    state.last_error = f"systemd 单元启动失败（未进入 active 状态）：{detail}"
+                    self._persist()
+                    raise StartError(f"{spec.name} 启动失败：{state.last_error}")
+
+                pid = unit_status.main_pid
+                info = proc.proc_info(pid)
+                state.pid = pid
+                state.pgid = info.pgid if info else pid
+                state.unit_name = unit
+                state.gpu_index = gpu_index
+                state.started_at = time.time()
+                state.start_ticks = info.start_ticks if info else None
+                state.log_path = str(log_path)
+                state.last_status = "starting"
+                state.last_error = None
+                state.updated_at = time.time()
+                self._procs.pop(model_id, None)
+                self._persist()
+                return state
+
+            try:
+                with open(log_path, "ab") as log_handle:
                     process = subprocess.Popen(
                         ["bash", str(script)],
                         cwd=str(cwd),
-                        env=env,
+                        env=base_env,
                         stdin=subprocess.DEVNULL,
                         stdout=log_handle,
                         stderr=subprocess.STDOUT,
                         start_new_session=True,
                         close_fds=True,
                     )
-                except OSError as exc:
-                    state.last_status = "failed"
-                    state.last_error = f"无法启动进程：{exc}"
-                    self._persist()
-                    raise StartError(f"无法启动 {spec.name}：{exc}") from exc
+            except OSError as exc:
+                state.last_status = "failed"
+                state.last_error = f"无法启动进程：{exc}"
+                self._persist()
+                raise StartError(f"无法启动 {spec.name}：{exc}") from exc
 
             # Catch scripts that fail immediately (missing env, bad flags, ...).
             deadline = time.monotonic() + 1.5
@@ -395,6 +548,7 @@ class ModelManager:
                 detail = " | ".join(tail[-3:]) if tail else "日志为空"
                 state.pid = None
                 state.pgid = None
+                state.unit_name = None
                 state.gpu_index = None
                 state.last_status = "failed"
                 state.last_error = f"启动进程立即退出（退出码 {process.returncode}）：{detail}"
@@ -404,6 +558,7 @@ class ModelManager:
             info = proc.proc_info(process.pid)
             state.pid = process.pid
             state.pgid = info.pgid if info else process.pid
+            state.unit_name = None
             state.gpu_index = gpu_index
             state.started_at = time.time()
             state.start_ticks = info.start_ticks if info else None
@@ -424,6 +579,39 @@ class ModelManager:
         with self._lock:
             state = self._states[model_id]
             detection = self.detect(model_id)
+            unit_status = self._unit_status(model_id)
+
+            if unit_status is not None and unit_status.active and self._units is not None:
+                unit = unit_status.name
+                try:
+                    stopped = self._units.stop(unit)
+                except UnitError as exc:
+                    raise StopError(f"停止 systemd 单元 {unit} 失败：{exc}") from exc
+                if not stopped:
+                    raise StopError(f"systemd 单元 {unit} 在超时后仍未停止")
+
+                deadline = time.monotonic() + 10.0
+                while time.monotonic() < deadline:
+                    if not proc.port_open(spec.port):
+                        break
+                    time.sleep(0.2)
+                port_free = not proc.port_open(spec.port)
+
+                state.last_status = "stopped"
+                state.last_error = None
+                state.pid = None
+                state.pgid = None
+                state.unit_name = None
+                state.gpu_index = None
+                state.updated_at = time.time()
+                self._procs.pop(model_id, None)
+                self._persist()
+
+                if not port_free:
+                    raise StopError(
+                        f"{spec.name} 的 systemd 单元已停止，但端口 {spec.port} 仍被占用"
+                    )
+                return f"已停止 {spec.name}（systemd 单元 {unit}）"
 
             if detection.managed and detection.pid:
                 pid = detection.pid
@@ -443,6 +631,7 @@ class ModelManager:
                 state.last_error = None
                 state.pid = None
                 state.pgid = None
+                state.unit_name = None
                 state.gpu_index = None
                 state.updated_at = time.time()
                 self._persist()
@@ -463,6 +652,7 @@ class ModelManager:
             state.last_error = None
             state.pid = None
             state.pgid = None
+            state.unit_name = None
             state.gpu_index = None
             state.updated_at = time.time()
             self._procs.pop(model_id, None)

@@ -194,6 +194,8 @@ All sizes fit; peak VRAM stays pinned at ~11.7/12 GiB because ComfyUI streams qu
 5. **Business-style UI** — navy/gold console styling, white cards, status pills, responsive layout.
 6. **H3 video generation (later extension)** — `/generate` submits a text prompt to the local H3 `/v1/videos` API, polls the job, shows progress, then plays the downloaded MP4 and echoes the prompt and parameters. Defaults: 480 short edge, 10 seconds, fixed 16:9; duration is 4–15 seconds. Jobs live in console memory and there is no gallery or history list.
 
+Each model runs in its own transient systemd user unit (`gen-studio-minimax-h3`, `gen-studio-qwen-image2.0`). Restarting the console therefore does not stop or reload a running model; the console reconnects to the existing unit after a restart.
+
 ```bash
 cd web
 uv venv .venv

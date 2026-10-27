@@ -22,6 +22,13 @@ DEFAULT_USERNAME = "admin"
 DEFAULT_PASSWORD = "admin"
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() not in {"0", "false", "no", "off", ""}
+
+
 @dataclass(frozen=True)
 class Settings:
     """Immutable settings object, safe to share between requests."""
@@ -31,6 +38,9 @@ class Settings:
     nvidia_smi: str = "nvidia-smi"
     session_ttl_seconds: int = 12 * 60 * 60
     health_timeout_seconds: float = 2.0
+    #: Start each model in its own transient systemd user unit. Tests that
+    #: construct Settings directly default to the old in-process launcher.
+    model_units_enabled: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "repo_root", Path(self.repo_root).resolve())
@@ -61,6 +71,7 @@ class Settings:
             data_dir=data_dir,
             nvidia_smi=os.environ.get("GEN_STUDIO_NVIDIA_SMI", "nvidia-smi"),
             session_ttl_seconds=int(os.environ.get("GEN_STUDIO_SESSION_TTL", 12 * 60 * 60)),
+            model_units_enabled=_env_bool("GEN_STUDIO_MODEL_UNITS", True),
         )
 
     def ensure_dirs(self) -> None:

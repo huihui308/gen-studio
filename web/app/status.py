@@ -192,13 +192,21 @@ class StatusCollector:
         if detection.managed:
             if health.get("ok"):
                 code, label, tone = "running", "运行中", "success"
-                note = "由本系统启动，健康检查通过"
+                note = (
+                    f"由独立 systemd 单元 {detection.unit_name} 管理，健康检查通过"
+                    if detection.unit_name
+                    else "由本系统启动，健康检查通过"
+                )
             elif age is not None and age > spec.startup_timeout_seconds:
                 code, label, tone = "unhealthy", "进程存活 · 健康检查失败", "danger"
                 note = f"启动已超过 {spec.startup_timeout_seconds // 60} 分钟仍未通过健康检查：{health.get('note')}"
             else:
                 code, label, tone = "starting", "启动中", "warning"
-                note = "模型正在加载，健康检查尚未通过"
+                note = (
+                    f"由独立 systemd 单元 {detection.unit_name} 管理，模型正在加载"
+                    if detection.unit_name
+                    else "模型正在加载，健康检查尚未通过"
+                )
         elif detection.unmanaged:
             if detection.marker_match and not detection.port_open:
                 code, label, tone = "starting", "启动中（外部进程）", "warning"
@@ -226,6 +234,7 @@ class StatusCollector:
             "label": label,
             "tone": tone,
             "managed": detection.managed,
+            "unit_name": detection.unit_name,
             "pid": detection.pid,
             "gpu_index": detection.gpu_index,
             "gpu_source": detection.gpu_source,

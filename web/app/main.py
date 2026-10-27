@@ -235,7 +235,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             # The control page reports ownership (who runs the process); the
             # status page owns detailed health and uptime.
             if detection.managed:
-                label, tone = "运行中（本系统）", "success"
+                if detection.unit_name:
+                    label, tone = "运行中（systemd 单元）", "success"
+                else:
+                    label, tone = "运行中（本系统）", "success"
             elif detection.unmanaged:
                 if detection.marker_match and not detection.port_open:
                     label, tone = "启动中（外部进程）", "warning"
@@ -266,6 +269,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "gpu_source": detection.gpu_source,
                     "start_epoch": detection.start_epoch,
                     "port_open": detection.port_open,
+                    "unit_name": detection.unit_name,
                     "note": detection.note or (state.last_error if state.last_status == "failed" else None),
                     "can_start": can_start,
                     "can_stop": can_stop,
@@ -408,10 +412,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except ControlError as exc:
             return _redirect("/control", error=str(exc))
         spec = CATALOG[model_id]
+        unit_note = " 的独立 systemd 单元" if manager.uses_systemd_units() else ""
         return _redirect(
             "/control",
             notice=(
-                f"已在 GPU {index} 上启动 {spec.name}（访问地址 {access_host}:{spec.port}），"
+                f"已在 GPU {index} 上启动 {spec.name}{unit_note}（访问地址 {access_host}:{spec.port}），"
                 "加载中；请在运行状态页查看进度"
             ),
         )

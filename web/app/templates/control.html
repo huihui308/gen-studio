@@ -46,6 +46,7 @@
       <div><dt>服务后端</dt><dd>{{ card.spec.backend }}</dd></div>
       <div><dt>监听地址（配置）</dt><dd class="mono">{{ card.access_host }}:{{ card.spec.port }}</dd></div>
       <div><dt>运行进程</dt><dd>{% if card.pid %}PID {{ card.pid }}{% else %}—{% endif %}</dd></div>
+      {% if card.unit_name %}<div><dt>systemd 单元</dt><dd class="mono">{{ card.unit_name }}</dd></div>{% endif %}
       <div><dt>所在显卡</dt><dd>{% if card.gpu_index is not none %}GPU {{ card.gpu_index }}{% else %}—{% endif %}</dd></div>
     </dl>
 

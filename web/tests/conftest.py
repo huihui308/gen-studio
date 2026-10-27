@@ -80,10 +80,15 @@ def settings(tmp_path: Path) -> Settings:
 
 
 @pytest.fixture()
-def make_app(settings: Settings):
+def make_app(settings: Settings, monkeypatch):
     """Build an app with an injected GPU probe and clean up spawned children."""
 
     apps = []
+    # Never inspect the host's real listeners: the test app uses a throw-away
+    # repository, but port probes would still find a production H3/Qwen on
+    # 30010/30020 and the teardown stop() path could kill it.
+    monkeypatch.setattr("app.manager.proc.listener_pid", lambda port: None)
+    monkeypatch.setattr("app.manager.proc.port_open", lambda port, **kwargs: False)
 
     def _make(probe: FakeProbe | None = None):
         app = create_app(settings)

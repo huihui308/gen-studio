@@ -193,6 +193,8 @@ ComfyUI 首次启动约 4 分钟（import + CUDA JIT），日志停在 `Using py
 5. **商务风界面** — 深海军蓝 + 暗金、白色卡片、状态药丸、响应式布局。
 6. **H3 视频生成（后续扩展）** — `/generate` 把文本提示词提交给本机 H3 `/v1/videos`，轮询任务并展示进度，完成后播放下载的 MP4，同时回显提示词与参数。默认短边 480、10 秒、固定 16:9；时长 4–15 秒。任务只存在控制台内存中，没有作品画廊或历史列表。
 
+每个模型运行在独立的 transient systemd user unit（`gen-studio-minimax-h3`、`gen-studio-qwen-image2.0`）中，因此重启控制台不会停止或重新加载正在运行的模型；控制台重启后会自动识别并接管现有 unit。
+
 ```bash
 cd web
 uv venv .venv

@@ -23,6 +23,8 @@ qwen-image/             Qwen-Image 2.1 Turbo, text to image (ComfyUI 0.42.0, int
   serve.sh              Serve ComfyUI on GPU 0, port 30020, outputs under qwen-image/output
   t2i.py                Submit one t2i workflow, poll, report wall time and peak VRAM
 web/                    Login-protected console: start/stop both models on an explicitly chosen GPU, live status
+stickman/               Content line: 30-second vertical shorts shot with the h3 pipeline
+  kezhou-qiujian/       《刻舟求剑》 — three 10 s H3 clips hard-cut into one 30 s short, plus the exact prompts
 ```
 
 ## h3
@@ -204,6 +206,16 @@ uv pip install -r requirements.txt
 ```
 
 Details, requirement-by-requirement verification, security notes and tests: [`web/README.md`](web/README.md).
+
+## stickman: a 30-second H3 video
+
+`stickman/kezhou-qiujian/` is a content line built with the `h3` pipeline: three independent 10-second `t2va` clips, hard-cut into one 30-second vertical short. Nothing here is needed to run the models — it is the pipeline used as a camera.
+
+![Three beats of the finished 30 s cut](stickman/kezhou-qiujian/preview.jpg)
+
+**[▶ Watch the 30-second cut](stickman/kezhou-qiujian/kezhou-qiujian-30s.mp4)** — 480×864, 24 fps, 30.4 s, 6.5 MB, diegetic audio only.
+
+Everything needed to reproduce it — the three prompts verbatim, the nine fixed request parameters, per-segment job ids and measured inference times, and the assembly steps — is in [`stickman/kezhou-qiujian/README.md`](stickman/kezhou-qiujian/README.md).
 
 ## License
 

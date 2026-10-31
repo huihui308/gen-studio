@@ -1,0 +1,155 @@
+# 《画蛇添足》· H3 视频提示词（h3-prompt-writing 优化稿）
+
+- 输入底稿：`stickman/huashe_tianzu/directing-stickman-videos.txt`
+- 技能：`h3-prompt-writing`
+- 模式：**T2VA**（纯文本 → 视频 + 音轨；`conditions: []`，无图片、无音频参考）
+- 规格：**16:9 / 480p / 10 秒 × 3 段 = 30 秒**
+- 分段映射（与底稿顺序、时间区间**完全一致**）：`0–10s` ↔ 底稿 `0–10s`；`10–20s` ↔ 底稿 `10–20s`；`20–30s` ↔ 底稿 `20–30s`
+- 提示词语言：英文（技能要求 rewrite 各字段用英文；旁白台词保留英文原文，中文对照另列）
+
+### 相对底稿做了什么（优化项）
+
+1. **字段化**：把底稿的三拍动作改写成 H3 T2VA 的三字段结构 —— `integrated_multimodal_description` / `overall_soundscape` / `non_diegetic_music`，顺序与字段名严格照技能约定。
+2. **切点化**：每段把 `[0–3s]`/`[3–7s]`/`[7–10s]` 显式写成 `[Shot 1]` / `[Shot 2] At 00:03.000` / `[Shot 3] At 00:07.000`（首镜头不写时间码，符合 H3 约定）。
+3. **旁白入轨**：底稿的旁白按句拆分，挂在对应镜头上，用 `says in an off-screen voiceover` + `<d>[English] …</d>`，并在每个 `<d>` 后声明画面人物全程闭口、无角色对白。
+4. **自包含**：底稿的画风锚点、三人同款设定、三个强调色语义、负面约束，**每段都完整重复**；三段可独立投喂、互不依赖。
+5. **音轨分工**：人声旁白留在 `integrated_multimodal_description`；环境声/SFX 归 `overall_soundscape`；钢琴 BGM 归 `non_diegetic_music`（底稿 BGM 段）。
+6. **未改动**：故事、三拍顺序、运镜、连续性出/入点、成语固有含义与结尾问句均保持底稿原样。
+
+### 待确认（承自底稿，本稿未自行改动）
+
+1. **原文「竖屏 16:9」**：16:9 是横幅比例，与「竖屏」互斥。本稿按原文执行 16:9 横幅构图；若实际要 9:16 竖屏，需重排镜头调度并重做两份文件。
+2. **画风**：原文未指定，按「火柴人」本义取 **Style 1 浅色极简线稿**（纯白画布 / 黑色线稿 / 3 个强调色）；如需 A5 历史卡通风等，请告知后重做。
+3. **提示词长度（执行风险，未在本机实测）**：本机已跑通的 t2va 样例提示词约 120 词，本稿每段 606–668 词——因为要求「每段自包含：画风锚点 + 三人设定 + 三镜头 + 旁白 + 负面约束」。若接口拒绝长提示词或遵循度下降，按以下顺序删减：先删环境形容词与重复修饰，务必保留 ① Style 1 画风锚点 ② 三个火柴人与三件道具的锁定 ③ 三镜头与切点 ④ `<d>` 旁白句 ⑤ 画布与画面文字的负面约束。
+
+### 全局锁定（每段提示词内均已逐字重复）
+
+- **画布**：扁平、数字级纯白；无纸纹、无渐变、无阴影、无景深光影。
+- **画风锚点（Style 1 Light，逐字）**：
+
+```text
+Use minimalist two-dimensional black line animation. Show the same consistent stick figure with a hollow circular head, occasional simple line expressions, no detailed facial features, no hair, no clothing, no filled body, stable proportions, connected line limbs, and uniform medium line weight. Exactly two arms and two legs are visible per figure. Each limb appears only in its current pose: raising or lowering the right arm replaces that arm's previous line, never leaving a resting arm beneath an active arm. The figure stays black; accent colors affect only props and graphic effects.
+```
+
+- **人物**：三个**完全同款**的火柴人；只靠站位、姿态与持有道具区分，不靠改外形；每人恒定两臂两腿。
+- **三强调色（全片仅此三个高饱和色，只用普通色彩词汇命名，不使用任何技术色标）**：电蓝 = 画出的蛇线（任务/进度）；暖金 = 酒壶（奖品/已到手的成果）；鲜红 = 酒液（赌注/结果）。人物本体恒为黑色。
+- **负面约束（已并入每段描述末尾）**：画面无任何文字/字母/数字/字幕/招牌/logo/水印；无对话气泡；无写实人物、五官与 3D；无多余肢体、手指、断手；人物只允许三个。
+- **旁白声音（冻结，全片同一人）**：
+
+```text
+One off-screen adult male narrator throughout. General American accent, warm clean baritone, medium-low pitch, gentle chest resonance, no raspiness or breathiness. Calm conversational delivery, restrained pitch variation, steady speaking pace, and close, dry studio sound. Keep the same vocal timbre, register, accent, pace, and recording quality throughout. Emotional progression belongs to the visuals and music; do not change the narrator's voice or switch to character dialogue.
+```
+
+### 生成参数（本机 `h3/request_480p.sh` 同款，仅列不写进提示词）
+
+| 项 | 取值 |
+|---|---|
+| 任务 / 参考 | `task: "t2va"`，`conditions: []`（不上传任何参考图/音频） |
+| 画幅 | `target.aspect_ratio: "16:9"`（按原文执行；竖屏歧义见「待确认」） |
+| 分辨率 | `target.short_edge: 480`（480p） |
+| 单段时长 | `seconds: 10`，`target.duration_seconds: 10.0` |
+| 采样 | `num_inference_steps: 20`，`flow_shift: 12.0`，`audio_flow_shift: 3.0` |
+| seed | `1101`（三段可改 `1101/1102/1103`，不影响提示词） |
+| 输出/拼接 | H3 固定 24 FPS / 32 kHz 立体声；三段硬切拼接 = 30 秒 |
+
+---
+
+## 0–10s
+
+**对应底稿段**：`0–10s`（黄金钩子 + 建立冲突：酒壶落地 → 规矩公布 → 三人开画 → 主角先画成）
+
+**本段 H3 处理**：`[0–3s]` 落壶 + 六臂伸出/收回 → `[Shot 1]`；`[3–7s]` 贴地横移追三条蓝线 → `[Shot 2] At 00:03.000`；`[7–10s]` 蓝蛇闭合 + 左手抬向把手 → `[Shot 3] At 00:07.000`。旁白拆到三个镜头上：Shot 1（6 词）、Shot 2 规则句（11 词）、Shot 3（3 词）。
+
+**旁白（英文 20 词）**
+- `[0.3–1.6s]` `One jar of wine.`
+- `[1.8–2.6s]` `One rule.`
+- `[3.2–6.8s]` `Draw a snake on the ground. The first to finish drinks.`
+- `[8.6–10.0s]` `He finished first.`
+
+**中文对照**：一壶酒，一条规矩：在地上画蛇，先画成的人喝。／他先画成了。
+
+```text
+integrated_multimodal_description: [Shot 1] 2D-animated, minimalist black line animation on a flat, digitally pure-white canvas with no texture, no gradient, no shadow, and no depth. Use minimalist two-dimensional black line animation. Show the same consistent stick figure with a hollow circular head, occasional simple line expressions, no detailed facial features, no hair, no clothing, no filled body, stable proportions, connected line limbs, and uniform medium line weight. Exactly two arms and two legs are visible per figure. Each limb appears only in its current pose: raising or lowering the right arm replaces that arm's previous line, never leaving a resting arm beneath an active arm. The figure stays black; accent colors affect only props and graphic effects. Three identical stick figures appear in this segment, all built to that same description: one enters from the left edge, one from the right edge, and one steps forward from behind the prize. A wide, static, level shot fills the 16:9 frame with empty white floor. A warm-gold rounded wine vessel with a short curved handle falls into the top of the frame and lands at the exact center of the floor with one small bounce; its outline is a smooth gold line over a solid gold fill. At the same instant the three figures step in, reach both arms toward the vessel, retract both arms together, and crouch down to the floor. An off-screen adult male narrator with a warm, clean baritone and calm, restrained delivery (S1) says in an off-screen voiceover: <d>[English] One jar of wine. One rule.</d> while all three figures stay silent with their simple line mouths completely closed and no character dialogue occurs. The camera pushes in with small amplitude at slow speed toward the gold vessel. [Shot 2] At 00:03.000, the shot cuts to a low, floor-level medium shot. The three crouching figures drag one fingertip each across the white floor, and three electric-blue snake lines grow outward in three directions, left, center, and right. The camera trucks right with small amplitude at slow speed as the blue lines lengthen toward the right side of the frame; the line nearest the lens passes under the lens and exits the frame. The same narrator (S1) continues in the same off-screen voiceover: <d>[English] Draw a snake on the ground. The first to finish drinks.</d> while the figures stay silent with their mouths completely closed. The three figures keep the same hollow circular heads, black line limbs, and identical proportions. [Shot 3] At 00:07.000, the shot cuts to a close-up of the electric-blue snake drawn by the center figure. Its final two strokes join head to tail; on the closing loop a single electric-blue pulse travels once around the whole outline and fades. The center figure releases the line tip with his right hand while his left hand already rises toward the gold vessel at frame right and stops just above the handle. The same narrator (S1) continues in the same off-screen voiceover: <d>[English] He finished first.</d> while all three figures stay silent with their mouths completely closed. The camera holds a static shot and pushes in very slightly on the closing loop. Throughout the segment the canvas stays flat pure white with no texture, gradient, shadow, or depth; no on-screen text, letters, numbers, captions, subtitles, signs, logos, or watermarks; no speech bubbles or dialogue boxes; no photorealistic people, faces, or 3D rendering; no extra limbs, fingers, detached hands, or additional figures beyond the three.
+
+overall_soundscape: One low thud with a short metallic wobble as the gold vessel lands on the white floor. Bare stick feet tap the floor as the figures crouch, and three fingertips scrape lightly across the surface in thin, dry strokes. The closing electric-blue outline rings once with a clean, bright chime that decays quickly.
+
+non_diegetic_music: Sparse single piano notes at a slow tempo over a quiet sustained ambient pad at low volume. A low piano note lands together with the vessel, and the same sparse pattern continues steadily until the end of the segment.
+```
+
+**本段核对**
+- 三镜头、切点 `00:03.000` / `00:07.000` 均在 10 秒内；首镜头无时间码。
+- 旁白 20 词（6+11+3），句级时间点与镜头落点对齐；每个 `<d>` 后均声明人物闭口、无角色对白。
+- 音轨三分离：人声旁白（描述内）/ SFX 环境声（`overall_soundscape`）/ 钢琴 BGM（`non_diegetic_music`）。
+- **出点**：左手停在金色酒壶把手上方、蓝蛇闭合脉冲未散 → 段 2 直接继承。
+
+---
+
+## 10–20s
+
+**对应底稿段**：`10–20s`（打破常识 + 拉出内幕：他端起酒壶、却给蛇添了两只脚；后景别人的蛇先合拢）
+
+**本段 H3 处理**：`[0–3s]` 左手端壶 + 右手重捏线尖 → `[Shot 1]`；`[3–7s]` 微距看两条蓝腿长出、焦点拉后景 → `[Shot 2] At 00:03.000`；`[7–10s]` 仰角微抬下巴 + 后景蓝蛇闭合 → `[Shot 3] At 00:07.000`。旁白按镜头拆成 3 个 `<d>` 块；讲「给蛇添脚」的那句压在微距长出脚的这一拍上。
+
+**旁白（英文 23 词）**
+- `[0.4–1.2s]` `He had won.`
+- `[1.4–2.9s]` `Then he kept going.`
+- `[3.2–6.6s]` `A snake looks too simple, so he adds two feet.`
+- `[8.3–10.0s]` `The rule never asked for feet.`
+
+**中文对照**：他早就赢了，可他没停手。蛇看着太简单，于是他给蛇添了两只脚。可规矩从没要过脚。
+
+```text
+integrated_multimodal_description: [Shot 1] 2D-animated, minimalist black line animation on a flat, digitally pure-white canvas with no texture, no gradient, no shadow, and no depth. Use minimalist two-dimensional black line animation. Show the same consistent stick figure with a hollow circular head, occasional simple line expressions, no detailed facial features, no hair, no clothing, no filled body, stable proportions, connected line limbs, and uniform medium line weight. Exactly two arms and two legs are visible per figure. Each limb appears only in its current pose: raising or lowering the right arm replaces that arm's previous line, never leaving a resting arm beneath an active arm. The figure stays black; accent colors affect only props and graphic effects. Three identical stick figures appear in this segment, all built to that same description. A low, floor-level medium shot frames the same closed electric-blue snake from the previous segment on the same flat white floor. The center figure crouches beside it with a smug simple line expression and his hollow circular head tilted slightly up. His left hand lifts the warm-gold wine vessel with the short curved handle to chest height, and his right hand picks up the line tip and presses it against the middle of the snake's body. The other two figures keep crouching in the soft background at frame left and frame right, still dragging their own electric-blue lines. An off-screen adult male narrator with a warm, clean baritone and calm, restrained delivery (S1) says in an off-screen voiceover: <d>[English] He had won. Then he kept going.</d> while all figures stay silent with their simple line mouths completely closed and no character dialogue occurs. The camera holds a static shot. [Shot 2] At 00:03.000, the shot cuts to a macro close-up of the middle of the snake on the white floor. Two short electric-blue legs grow downward from the snake's body: one complete, the second drawn only halfway; the line forks clearly past its original outline. Focus pulls from the new legs to the background at frame right, where another figure's electric-blue line is still extending quickly. The same narrator (S1) continues in the same off-screen voiceover: <d>[English] A snake looks too simple, so he adds two feet.</d> while the figures stay silent with their mouths completely closed. The camera holds a static shot. [Shot 3] At 00:07.000, the shot cuts to a slightly low-angle medium close-up of the center figure. He straightens up and lifts his chin; one extra electric-blue leg is finished and the second is left half-drawn. The red wine inside the gold vessel in his left hand tilts and sways. In the background at frame right, the second figure's electric-blue snake closes head to tail and one electric-blue pulse runs around its outline. The same narrator (S1) continues in the same off-screen voiceover: <d>[English] The rule never asked for feet.</d> while the figures stay silent with their mouths completely closed. The camera tilts up with small amplitude at slow speed. Throughout the segment the canvas stays flat pure white with no texture, gradient, shadow, or depth; no on-screen text, letters, numbers, captions, subtitles, signs, logos, or watermarks; no speech bubbles or dialogue boxes; no photorealistic people, faces, or 3D rendering; no extra limbs, fingers, detached hands, or additional figures beyond the three.
+
+overall_soundscape: A fingertip scrapes lightly across the floor, and the wine sloshes softly inside the gold vessel as it is lifted. Faint dry strokes continue in the background, then one clean bright chime closes the distant snake. A short satisfied exhale is audible near the end.
+
+non_diegetic_music: The identical sparse piano pattern and quiet sustained ambient pad continue at the same tempo and instrumentation, with slightly more frequent notes and a small rise in volume toward the end of the segment.
+```
+
+**本段核对**
+- 三镜头、切点 `00:03.000` / `00:07.000` 均在 10 秒内；首镜头无时间码。
+- 旁白 23 词（7+10+6），无超速句；每个 `<d>` 后声明人物闭口、无角色对白。
+- 连续性：蛇线上的「两只脚」在本段出现（先一只、后一只半），与底稿一致。
+- **出点**：后景右侧蓝蛇闭合脉冲 → 段 3 在同一个脉冲上手臂压壶。
+
+---
+
+## 20–30s
+
+**对应底稿段**：`20–30s`（真相揭秘 + 升华互动：酒被拿走、他手里只剩空气；点题 + 开放问句）
+
+**本段 H3 处理**：`[0–3s]` 手臂压壶夺酒 + 线尖僵住 → `[Shot 1]`；`[3–7s]` 近景仰头喝 + 左手反打 + 半截蓝腿脱落 → `[Shot 2] At 00:03.000`；`[7–10s]` 大振幅拉远转俯拍大全景、拿酒的人出画 → `[Shot 3] At 00:07.000`。问句压在最后一拍，结尾留纯白负空间。
+
+**旁白（英文 22 词）**
+- `[0.3–2.0s]` `Another man's snake is done.`
+- `[2.2–3.7s]` `He drinks the wine.`
+- `[3.9–7.4s]` `The prize was yours, and you kept drawing.`
+- `[8.4–10.0s]` `Where do you draw feet?`
+
+**中文对照**：另一个人的蛇画成了。他喝掉了那壶酒。那壶酒本来就是你的，你却还在画。你在给什么添脚？
+
+```text
+integrated_multimodal_description: [Shot 1] 2D-animated, minimalist black line animation on a flat, digitally pure-white canvas with no texture, no gradient, no shadow, and no depth. Use minimalist two-dimensional black line animation. Show the same consistent stick figure with a hollow circular head, occasional simple line expressions, no detailed facial features, no hair, no clothing, no filled body, stable proportions, connected line limbs, and uniform medium line weight. Exactly two arms and two legs are visible per figure. Each limb appears only in its current pose: raising or lowering the right arm replaces that arm's previous line, never leaving a resting arm beneath an active arm. The figure stays black; accent colors affect only props and graphic effects. Three identical stick figures appear in this segment, all built to that same description. A static medium shot frames the same white floor. The center figure holds the warm-gold wine vessel with the short curved handle in his left hand; the right-hand figure's line arm slams down onto the vessel and pulls it away with a fast, sharp motion that shakes the red wine inside. The center figure's line tip freezes in mid-air, and one half-drawn electric-blue leg hangs from his snake. An off-screen adult male narrator with a warm, clean baritone and calm, restrained delivery (S1) says in an off-screen voiceover: <d>[English] Another man's snake is done.</d> while all figures stay silent with their simple line mouths completely closed and no character dialogue occurs. The camera holds a static shot. [Shot 2] At 00:03.000, the shot cuts to a medium close-up of the right-hand figure. He tips the gold vessel to his mouth and leans his head back; a thin vivid-red line of wine flows from the vessel mouth into his mouth and is swallowed. The camera pans left with large amplitude at fast speed to the center figure's empty left hand, which opens and closes around nothing, while the half-drawn electric-blue leg detaches from his snake and drops onto the white floor. The same narrator (S1) continues in the same off-screen voiceover: <d>[English] He drinks the wine. The prize was yours, and you kept drawing.</d> while the figures stay silent with their mouths completely closed. [Shot 3] At 00:07.000, the camera pulls out with large amplitude at slow speed to a high wide shot. The center figure stands alone at the center of the white floor beside his electric-blue snake with two legs; the loose extra strokes crumble into a short random blue squiggle; the right-hand figure walks out of frame right carrying the gold vessel; large empty white negative space remains at the bottom and right of the 16:9 frame. The same narrator (S1) continues in the same off-screen voiceover: <d>[English] Where do you draw feet?</d> while the center figure stays silent with his simple line mouth completely closed. Throughout the segment the canvas stays flat pure white with no texture, gradient, shadow, or depth; no on-screen text, letters, numbers, captions, subtitles, signs, logos, or watermarks; no speech bubbles or dialogue boxes; no photorealistic people, faces, or 3D rendering; no extra limbs, fingers, detached hands, or additional figures beyond the three.
+
+overall_soundscape: A flat slap lands on the metal vessel with a dull knock, followed by liquid pouring and a single swallow. One small dry snap is heard as the extra blue stroke detaches and drops onto the floor, and footsteps then walk away across the bare floor and fade out.
+
+non_diegetic_music: The same sparse piano pattern continues at identical tempo and instrumentation but with fewer notes, thinning to one isolated low piano note that decays into silence by the end of the segment.
+```
+
+**本段核对**
+- 三镜头、切点 `00:03.000` / `00:07.000` 均在 10 秒内；首镜头无时间码。
+- 旁白 22 词（5+12+5）；结尾问句落在 `[8.4–10.0s]`，与「大片负空间」同步。
+- 收尾：多余的两条蓝腿散成乱线，拿酒的人出画，画面回到纯白 —— 与底稿「真相 + 点题」一致。
+- **出点**：全片结束，无下一段。
+
+---
+
+### 全片分段与底稿对照校验
+
+| 时间区间 | 底稿段落 | 本文件段落 | 拍摄任务 | 旁白词数 | 镜数 / 切点 |
+|---|---|---|---|---|---|
+| `0–10s` | 黄金钩子 + 建立冲突 | `## 0–10s` | 酒壶落地、规矩公布、三人开画、主角先画成 | 20 | 3 / 00:03.000、00:07.000 |
+| `10–20s` | 打破常识 + 拉出内幕 | `## 10–20s` | 他给蛇添两只脚、后景别人的蛇先合拢 | 23 | 3 / 00:03.000、00:07.000 |
+| `20–30s` | 真相揭秘 + 升华互动 | `## 20–30s` | 酒被拿走、他手里只剩空气、点题抛问 | 22 | 3 / 00:03.000、00:07.000 |
+
+**校验结论**：3 段 × 10 秒 = 30 秒；标题时间区间与底稿逐一对应、顺序一致；每段自包含画风锚点、三人设定、音轨与负面约束。

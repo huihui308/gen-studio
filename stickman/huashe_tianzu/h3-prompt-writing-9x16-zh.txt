@@ -1,0 +1,202 @@
+# 《画蛇添足》· H3 视频提示词（9:16 竖屏 · 480p · 中文配音 · 30 秒 = 3 × 10 秒）
+
+- 输入底稿：`stickman/huashe_tianzu/directing-stickman-videos.txt`（Director 稿，30 秒分镜）
+- 方法：`h3-prompt-writing` 技能 · **T2VA** 路径（`references/base-en.txt` 三字段结构：`integrated_multimodal_description` / `overall_soundscape` / `non_diegetic_music`）
+- 模式：**T2VA**（纯文本 → 视频 + 音轨；`conditions: []`，不上传图片/音频参考）
+- 输出：**9:16 竖屏 · 480p（480 × 864）· 24 FPS · 中文（普通话）配音 · 3 段 × 10 秒 = 30 秒**
+- 分段：`0–10s` / `10–20s` / `20–30s`，与底稿时间区间、三拍顺序、出/入点一一对应
+- 本文件定位：**9:16 + 中文配音版**。同目录 `h3-prompt-writing.txt` 是早前的 16:9 + 英文旁白版，本次按边界要求**未改动**它；后续生成以本文件为准。
+- 已有成片（未改动）：`0-10s-480p-9x16-h3.mp4`、`10-20s-480p-9x16-h3.mp4`、`20-30s-480p-9x16-h3.mp4`，实测 480 × 864、24 FPS、每段 243 帧。对应 `h3/payloads/huashe-tianzu-*-480p-9x16.json` 里的提示词与英文旁白版逐字相同（英文 VO，段 1、段 3 还留着「16:9」措辞），只把参数换成 9:16。本文件场景、动作、分镜、运镜、音效不变；构图按 9:16 重排，旁白改成中文（另有两处按底稿校正，见第二节）。
+
+## 一、四项要求落点（验收对照）
+
+| 要求 | 在提示词中的落点 | 说明 |
+|---|---|---|
+| 总 30s，每次生成 10s | 三段各自首行 `10-second duration`；参数 `seconds: 10` / `duration_seconds: 10.0`；段内切点 `00:03.000`、`00:07.000`（3 镜）；3 × 10s = 30s | 每段自包含，可独立投喂 |
+| 中文配音 | 每段首行 `all spoken audio is Chinese (Mandarin) voiceover`；首块旁白用 `says in an off-screen voiceover: <d>[Chinese] …</d>`，同段后续块用 `continues in the same off-screen voiceover in standard Mandarin`；声音档案改为普通话男中音；负面约束写明 `no English voiceover and no character dialogue` | 台词逐字取自底稿「中文对照」（底稿第 123/160/197 行） |
+| 480p | 每段首行 `480p resolution (480 × 864)`；参数 `short_edge: 480` | 输出实际为 480 × 864（H3 按 32 对齐取整；严格 9:16 × 480 短边约 480 × 853） |
+| 9:16 | 每段首行 `vertical 9:16 portrait frame`；描述内 `composed inside a vertical 9:16 portrait frame`；竖屏构图规则（下半 2/3 地面 / 上半 1/3 纯白 / 上下 8% 安全区 / 三线纵向层叠） | 与底稿 16:9 的左右调度冲突，已按四项要求改 |
+
+> 首行 `Output specification:` 是应「四项要求须在提示词中明确标注」而加的规格行；H3 的 T2VA 主体仍是其后三字段。注意：9:16 与中文也写在描述与旁白标签里，但 480p 只在这一行出现——删掉规格行就丢掉「提示词内标注 480p」这一验收项，**不建议删**。
+
+## 二、与底稿冲突及取舍（以四项要求为准）
+
+1. **画幅：底稿 16:9 → 本文件 9:16（冲突，按用户要求改）**
+   - 底稿第 13 行把画幅定为 16:9，并自注「原文『竖屏 16:9』自相矛盾」。本次四项要求明确 9:16 竖屏，故按 9:16 执行。
+   - 底稿第 23 行已写明改法：「若实际要竖屏，构图需从『左右调度』改为『纵深/层叠调度』」；第 208–209 行记录的是 16:9 横向调度与安全区。本文件即按此改：酒壶落点从「画面正中横向三分区」改为「下中景中线」；三条蓝蛇从「左/中/右横排」改为「近景/中景/远景纵向层叠」；段 2 后景人物从「画面右侧」改为「纵深处贴近左右上角」；段 3 收尾留白从「右侧与下方」改为「上下大片纯白」。**镜头数、切点、时长、三拍动作顺序、台词位置均不变。**
+   - 另一处按底稿校正：段 1 第一镜，底稿第 110 行写「静止全景（3s）」，旧版 16:9 提示词却在这一镜加了一次极轻 push in；本文件按底稿改回静止全景，push in 只保留在第三镜（底稿同款「切特写 + 极轻 push in」）。段 3 收尾的「俯拍大全景」按底稿写成 `high-angle overhead wide shot`（旧版只写 `high wide shot`，俯角不明确）。
+   - 16:9 版提示词仍在同目录 `h3-prompt-writing.txt` 里，未删除、未修改。
+
+2. **旁白：底稿默认英文 → 本文件中文（冲突，按用户要求改）**
+   - 底稿第 18 行写「英文旁白 + 中文对照；技能默认英文 VO」；本次要求配音语言为中文，故提示词内旁白改为中文，且**不新写台词**——逐字采用底稿第 123/160/197 行的「中文对照」文本（底稿本身注明「配音时可直接替换，不改画面」）。
+   - 仅一处标点改动：段 1 首句原文为「一壶酒，一条规矩：在地上画蛇，先画成的人喝。」，为按镜头分块做中文 TTS，把句中的全角冒号改句号，拆成 `一壶酒，一条规矩。` + `在地上画蛇，先画成的人喝。`，文字未改；段 2、段 3 与底稿逐字一致（段 2「他早就赢了，可他没停手。」保留原逗号）。
+   - 声音档案：底稿第 57 行的英文冻结块（General American accent / 美式男中音）只改「语言 + 口音」为 standard Mandarin Chinese，其余音色、音区、共鸣、语速、录音质感参数逐项保留；中文说明见底稿第 60–62 行。
+
+3. **无冲突项（照底稿执行）**：480p；30 秒 = 3 × 10 秒；Style 1 浅色极简线稿；三个完全同款火柴人；三强调色（电蓝 / 暖金 / 鲜红）；BGM 与 SFX；画面内不出现任何文字；三段硬切、BGM 不重启。
+
+4. **一处提醒（非冲突）**：中文只存在于配音音轨，画面内仍不出现任何文字（含中文字幕）；片头「画蛇添足」与片尾问句按底稿第 209/216 行在后期叠加，不进提示词。
+
+## 三、全局锁定与全片冻结档案（画风 / 人物 / 颜色 / 构图在每段逐字重复）
+
+- **画布**：扁平、数字级纯白；无纸纹、无渐变、无阴影、无景深光影。
+- **画风锚点（Style 1 Light，逐字）**：
+
+```text
+Use minimalist two-dimensional black line animation. Show the same consistent stick figure with a hollow circular head, occasional simple line expressions, no detailed facial features, no hair, no clothing, no filled body, stable proportions, connected line limbs, and uniform medium line weight. Exactly two arms and two legs are visible per figure. Each limb appears only in its current pose: raising or lowering the right arm replaces that arm's previous line, never leaving a resting arm beneath an active arm. The figure stays black; accent colors affect only props and graphic effects.
+```
+
+- **人物**：三个完全同款火柴人（空心圆头、黑色线段身体、无衣无发、同一线宽同一比例）；只靠站位、姿态、持有道具区分；每人恒定两臂两腿，只有三个。
+- **三强调色**（全片仅此三个高饱和色，只用普通色彩词命名，不写色号）：电蓝 = 画出的蛇线（任务/进度）；暖金 = 酒壶（奖品/已到手的成果）；鲜红 = 酒液（赌注/结果）。人物本体恒为黑色，强调色只作用于道具与图形效果。
+- **9:16 竖屏构图规则**（每段都写）：白色地面占画面下 2/3，纯白空景占上 1/3；上下各 8% 为安全区不放关键信息；三条蓝蛇按「近—中—远」纵向层叠而非左右横排；人物进出画统一走画面左右边缘或纵深方向。
+- **中文旁白声音（全片冻结档）**：每段提示词内使用下面这段身份句与音色参数（三段逐字一致）；完整冻结档供 TTS / 后期统一录制，三段同一人。底稿英文冻结块（第 57 行）只把「General American accent」换成「standard Mandarin Chinese」，其余参数逐项保留。
+
+```text
+One off-screen adult male narrator speaking standard Mandarin Chinese throughout, with a warm, clean baritone, medium-low pitch, gentle chest resonance, no raspiness or breathiness, calm conversational delivery, restrained pitch variation, steady speaking pace, and close, dry studio sound. Keep the same vocal timbre, register, accent, pace, and recording quality throughout. Emotional progression belongs to the visuals and music; do not change the narrator's voice or switch to character dialogue.
+```
+
+- **负面约束（已并入每段描述末尾）**：画面无任何文字/字母/数字/字幕/招牌/logo/水印；无对话气泡；无写实人物、五官与 3D；无多余肢体、手指、断手；人物只允许三个；配音全中文，无英文旁白、无角色对白。
+
+## 四、中文旁白全文与句级时间点
+
+| 段 | 句级时间点 | 中文旁白（逐字） | 汉字数（不含标点） |
+|---|---|---|---|
+| 0–10s | `[0.3–2.0s]` / `[3.0–5.8s]` / `[8.5–10.0s]` | 一壶酒，一条规矩。／在地上画蛇，先画成的人喝。／他先画成了。 | 23 |
+| 10–20s | `[0.4–2.9s]` / `[3.2–6.9s]` / `[7.9–10.0s]` | 他早就赢了，可他没停手。／蛇看着太简单，于是他给蛇添了两只脚。／可规矩从没要过脚。 | 34 |
+| 20–30s | `[0.3–2.4s]` / `[3.2–6.9s]` / `[8.2–10.0s]` | 另一个人的蛇画成了。／他喝掉了那壶酒。那壶酒本来就是你的，你却还在画。／你在给什么添脚？ | 37 |
+
+- 中文按每秒约 3.3–5.7 字配速（段 1 开场与段尾偏慢；段 3 中段两句压在同一镜头的 3.7s 内，是全片最密的一拍），三段实际语流约 6.0s / 8.3s / 7.6s，均落在 10 秒内；句间留 0.2–0.4s 呼吸位，隔镜头的句子按切点另留停顿。
+- 句级时间点供后期 TTS / 字幕对齐；音块的镜头归属以提示词内 `<d>` 所在镜头为准——三段所有 `<d>` 都不跨切点，因此未使用 `<scenetrans>`。
+- 旁白挂在对应镜头上；每个 `<d>` 后都声明画面人物全程闭口、无角色对白。
+
+## 五、生成参数（不进提示词，本机 `h3/request_480p.sh` 同款）
+
+| 项 | 取值 |
+|---|---|
+| 任务 / 参考 | `task: "t2va"`，`conditions: []`（不上传任何参考图/音频） |
+| 画幅 | `target.aspect_ratio: "9:16"` |
+| 分辨率 | `target.short_edge: 480` → 输出 480 × 864 |
+| 单段时长 | `seconds: 10`，`target.duration_seconds: 10.0` |
+| 采样 | `num_inference_steps: 20`，`flow_shift: 12.0`，`audio_flow_shift: 3.0` |
+| seed | `1101`（与 `h3/payloads/huashe-tianzu-*.json` 一致；三段可改 1101/1102/1103，不影响提示词） |
+| 输出 / 拼接 | 24 FPS；三段硬切拼接；**名义** 30s，H3 实测每段 243 帧 = 10.125s（容器显示 10.157s），三段拼接约 30.4s；要严格 30.000s 需每段尾部裁掉约 0.13s |
+| 分辨率取整 | 9:16 × 短边 480 实际输出 480 × 864（H3 按 32 对齐向上取整；严格 9:16 约 480 × 853） |
+
+---
+
+## 六、三段提示词
+
+### 0–10s
+
+**对应底稿段**：`0–10s`（黄金钩子 + 建立冲突：酒壶落地 → 规矩公布 → 三人开画 → 主角先画成）
+
+**本段处理**：`[0–3s]` 落壶 + 六臂伸出/收回 → `[Shot 1]`；`[3–7s]` 贴地横移追三条蓝线 → `[Shot 2] At 00:03.000`；`[7–10s]` 蓝蛇闭合 + 左手抬向把手 → `[Shot 3] At 00:07.000`。旁白拆成三块：Shot 1 起规矩、Shot 2 讲规则句、Shot 3 落下「他先画成了」。
+
+**中文旁白（3 句 / 23 字）**
+- `[0.3–2.0s]` 一壶酒，一条规矩。
+- `[3.0–5.8s]` 在地上画蛇，先画成的人喝。
+- `[8.5–10.0s]` 他先画成了。
+
+**9:16 竖屏调度**：酒壶从画面上缘落到下中景垂直中线上；三人从左右边缘 + 纵深处进入，近大远小形成「前—中—后」三层；三条蓝蛇分别压在下缘近景、中线中景、上缘远景。
+
+```text
+Output specification: vertical 9:16 portrait frame, 480p resolution (480 × 864), 10-second duration, all spoken audio is Chinese (Mandarin) voiceover.
+
+integrated_multimodal_description: [Shot 1] 2D-animated, minimalist black line animation on a flat, digitally pure-white canvas with no texture, no gradient, no shadow, and no depth, composed inside a vertical 9:16 portrait frame. Use minimalist two-dimensional black line animation. Show the same consistent stick figure with a hollow circular head, occasional simple line expressions, no detailed facial features, no hair, no clothing, no filled body, stable proportions, connected line limbs, and uniform medium line weight. Exactly two arms and two legs are visible per figure. Each limb appears only in its current pose: raising or lowering the right arm replaces that arm's previous line, never leaving a resting arm beneath an active arm. The figure stays black; accent colors affect only props and graphic effects. Three identical stick figures appear in this segment, all built to that same description: one enters from the left edge of the frame, one enters from the right edge, and one steps forward from the flat white background behind the prize and settles in the middle of the group, so that the third figure stands slightly higher in the frame and a little farther away than the other two. A wide, level static shot fills the portrait frame with empty white floor in the lower two thirds and flat white void in the upper third, keeping the top and bottom eight percent of the frame free of action. A warm-gold rounded wine vessel with a short curved handle falls from the top edge of the frame and lands at the exact center of the floor, in the lower middle of the portrait frame, with one small bounce; its outline is a smooth gold line over a solid gold fill. At the same instant the three figures step in, reach both arms toward the vessel, retract both arms together, and crouch down to the floor. An off-screen adult male narrator speaking standard Mandarin Chinese, with a warm, clean baritone, medium-low pitch, gentle chest resonance, no raspiness or breathiness, calm conversational delivery, restrained pitch variation, steady speaking pace, and close, dry studio sound (S1) says in an off-screen voiceover: <d>[Chinese] 一壶酒，一条规矩。</d> while all three figures stay silent with their simple line mouths completely closed and no character dialogue occurs. [Shot 2] At 00:03.000, the shot cuts to a low, floor-level medium shot. The three crouching figures drag one fingertip each across the white floor, and three electric-blue snake lines grow outward at three different depths: the nearest line crosses the lower part of the frame in the foreground, the middle line runs across the center of the floor beneath the crouching figures, and the farthest line grows higher up in the frame toward the flat white background, so the three lines stack vertically in the portrait frame instead of spreading left to right. The camera trucks right with small amplitude at slow speed as the blue lines lengthen; the line nearest the lens passes under the lens and exits the bottom of the frame. The same narrator (S1) continues in the same off-screen voiceover in standard Mandarin: <d>[Chinese] 在地上画蛇，先画成的人喝。</d> while the three figures stay silent with their mouths completely closed. The three figures keep the same hollow circular heads, black line limbs, and identical proportions. [Shot 3] At 00:07.000, the shot cuts to a close-up of the electric-blue snake drawn by the center figure, filling the lower half of the portrait frame. Its final two strokes join head to tail; on the closing loop a single electric-blue pulse travels once around the whole outline and fades. The center figure releases the line tip with his right hand while his left hand already rises toward the gold vessel standing in the lower middle of the frame and stops just above the handle. The same narrator (S1) continues in the same off-screen voiceover in standard Mandarin: <d>[Chinese] 他先画成了。</d> while all three figures stay silent with their mouths completely closed. The camera pushes in with small amplitude at slow speed on the closing loop. Throughout the segment the canvas stays flat pure white with no texture, gradient, shadow, or depth; every spoken word is Chinese with no English voiceover and no character dialogue; no on-screen text, letters, numbers, captions, subtitles, signs, logos, or watermarks; no speech bubbles or dialogue boxes; no photorealistic people, faces, or 3D rendering; no extra limbs, fingers, detached hands, or additional figures beyond the three.
+
+overall_soundscape: One low thud with a short metallic wobble as the gold vessel lands on the white floor. Bare stick feet tap the floor as the figures crouch, and three fingertips scrape lightly across the surface in thin, dry strokes. The closing electric-blue outline rings once with a clean, bright chime that decays quickly.
+
+non_diegetic_music: Sparse single piano notes at a slow tempo over a quiet sustained ambient pad at low volume. A low piano note lands together with the vessel, and the same sparse pattern continues steadily until the end of the segment.
+```
+
+**本段核对**
+- 三镜头、切点 `00:03.000` / `00:07.000` 均在 10 秒内；首镜头无时间码；规格：9:16 / 480p / 10s / 中文旁白。
+- 中文旁白 23 字（7+11+5，不含标点），句级时间点与镜头落点对齐；每个 `<d>` 后均声明人物闭口、无角色对白。
+- 音轨三分离：中文旁白（描述内）/ SFX 环境声（`overall_soundscape`）/ 钢琴 BGM（`non_diegetic_music`）。
+- **出点**：左手停在金色酒壶把手上方、蓝蛇闭合脉冲未散 → 段 2 直接继承。
+
+---
+
+### 10–20s
+
+**对应底稿段**：`10–20s`（打破常识 + 拉出内幕：他端起酒壶、却给蛇添了两只脚；后景别人的蛇先合拢）
+
+**本段处理**：`[0–3s]` 左手端壶 + 右手重捏线尖 → `[Shot 1]`；`[3–7s]` 微距看两条蓝腿长出、焦点拉后景 → `[Shot 2] At 00:03.000`；`[7–10s]` 微幅仰拍 + 后景蓝蛇闭合 → `[Shot 3] At 00:07.000`。中文旁白按镜头拆成 3 个 `<d>` 块，「给蛇添两只脚」那句压在微距长出脚的这一拍上。
+
+**中文旁白（3 句 / 34 字）**
+- `[0.4–2.9s]` 他早就赢了，可他没停手。
+- `[3.2–6.9s]` 蛇看着太简单，于是他给蛇添了两只脚。
+- `[7.9–10.0s]` 可规矩从没要过脚。
+
+**9:16 竖屏调度**：中景把闭合蓝蛇压在下半幅、人物上身占上半幅；另外两人退到纵深处贴近画面左右上角；微距镜头里两条新腿向下长、背景加速的蓝线在高处（画面上方）延伸；段末仰看下巴 + 后景右上方蓝蛇闭合。
+
+```text
+Output specification: vertical 9:16 portrait frame, 480p resolution (480 × 864), 10-second duration, all spoken audio is Chinese (Mandarin) voiceover.
+
+integrated_multimodal_description: [Shot 1] 2D-animated, minimalist black line animation on a flat, digitally pure-white canvas with no texture, no gradient, no shadow, and no depth, composed inside a vertical 9:16 portrait frame. Use minimalist two-dimensional black line animation. Show the same consistent stick figure with a hollow circular head, occasional simple line expressions, no detailed facial features, no hair, no clothing, no filled body, stable proportions, connected line limbs, and uniform medium line weight. Exactly two arms and two legs are visible per figure. Each limb appears only in its current pose: raising or lowering the right arm replaces that arm's previous line, never leaving a resting arm beneath an active arm. The figure stays black; accent colors affect only props and graphic effects. Three identical stick figures appear in this segment, all built to that same description. A low, floor-level medium shot frames the same closed electric-blue snake from the previous segment on the same flat white floor, with the snake crossing the lower middle of the portrait frame. The center figure crouches beside it with a smug simple line expression and his hollow circular head tilted slightly up, filling the upper half of the portrait frame. His left hand lifts the warm-gold wine vessel with the short curved handle to chest height in the middle of the frame, and his right hand picks up the line tip and presses it against the middle of the snake's body. The other two figures keep crouching deeper in the soft white background, one near the upper left edge and one near the upper right edge of the portrait frame, still dragging their own electric-blue lines. An off-screen adult male narrator speaking standard Mandarin Chinese, with a warm, clean baritone, medium-low pitch, gentle chest resonance, no raspiness or breathiness, calm conversational delivery, restrained pitch variation, steady speaking pace, and close, dry studio sound (S1) says in an off-screen voiceover: <d>[Chinese] 他早就赢了，可他没停手。</d> while all figures stay silent with their simple line mouths completely closed and no character dialogue occurs. The camera holds a static shot. [Shot 2] At 00:03.000, the shot cuts to a macro close-up of the middle of the snake on the white floor, filling the portrait frame. Two short electric-blue legs grow downward from the snake's body: one complete, the second drawn only halfway; the line forks clearly past its original outline. Focus pulls from the new legs to the background higher in the frame, where another figure's electric-blue line is still extending quickly. The same narrator (S1) continues in the same off-screen voiceover in standard Mandarin: <d>[Chinese] 蛇看着太简单，于是他给蛇添了两只脚。</d> while the figures stay silent with their mouths completely closed. The camera holds a static shot. [Shot 3] At 00:07.000, the shot cuts to a slightly low-angle medium close-up of the center figure, with his hollow circular head near the top of the portrait frame. He straightens up and lifts his chin; one extra electric-blue leg is finished and the second is left half-drawn. The red wine inside the gold vessel in his left hand tilts and sways in the middle of the frame. In the background near the upper right of the portrait frame, the second figure's electric-blue snake closes head to tail and one electric-blue pulse runs around its outline. The same narrator (S1) continues in the same off-screen voiceover in standard Mandarin: <d>[Chinese] 可规矩从没要过脚。</d> while the figures stay silent with their mouths completely closed. The camera tilts up with small amplitude at slow speed. Throughout the segment the canvas stays flat pure white with no texture, gradient, shadow, or depth; every spoken word is Chinese with no English voiceover and no character dialogue; no on-screen text, letters, numbers, captions, subtitles, signs, logos, or watermarks; no speech bubbles or dialogue boxes; no photorealistic people, faces, or 3D rendering; no extra limbs, fingers, detached hands, or additional figures beyond the three.
+
+overall_soundscape: A fingertip scrapes lightly across the floor, and the wine sloshes softly inside the gold vessel as it is lifted. Faint dry strokes continue in the background, then one clean bright chime closes the distant snake. A short satisfied exhale is audible near the end.
+
+non_diegetic_music: The identical sparse piano pattern and quiet sustained ambient pad continue at the same tempo and instrumentation, with slightly more frequent notes and a small rise in volume toward the end of the segment.
+```
+
+**本段核对**
+- 三镜头、切点 `00:03.000` / `00:07.000` 均在 10 秒内；首镜头无时间码；规格：9:16 / 480p / 10s / 中文旁白。
+- 中文旁白 34 字（10+16+8，不含标点），句间留 0.2–0.4s 呼吸位；每个 `<d>` 后声明人物闭口、无角色对白。
+- 连续性：两只脚在本段出现（先一只、后一只半），与底稿一致。
+- **出点**：后景右上方蓝蛇闭合脉冲 → 段 3 在同一个脉冲上手臂压壶。
+
+---
+
+### 20–30s
+
+**对应底稿段**：`20–30s`（真相揭秘 + 升华互动：酒被拿走、他手里只剩空气；点题 + 开放问句）
+
+**本段处理**：`[0–3s]` 手臂压壶夺酒 + 线尖僵住 → `[Shot 1]`；`[3–7s]` 近景仰头喝 + 左手反打 + 半截蓝腿脱落 → `[Shot 2] At 00:03.000`；`[7–10s]` 大振幅拉远转俯拍大全景、拿酒的人从右侧出画 → `[Shot 3] At 00:07.000`。问句压在最后一拍，最后 1 秒留纯白负空间。
+
+**中文旁白（3 块 / 4 句 / 37 字）**
+- `[0.3–2.4s]` 另一个人的蛇画成了。
+- `[3.2–6.9s]` 他喝掉了那壶酒。那壶酒本来就是你的，你却还在画。
+- `[8.2–10.0s]` 你在给什么添脚？
+
+**9:16 竖屏调度**：中景把酒壶压在画面中线，右侧人物从右缘进入；仰头喝时人物占上半幅、红液走竖向动作线；拉远俯拍后主角缩小在中线，上下各留大片纯白给片尾问句，右侧人物从右缘出画。
+
+```text
+Output specification: vertical 9:16 portrait frame, 480p resolution (480 × 864), 10-second duration, all spoken audio is Chinese (Mandarin) voiceover.
+
+integrated_multimodal_description: [Shot 1] 2D-animated, minimalist black line animation on a flat, digitally pure-white canvas with no texture, no gradient, no shadow, and no depth, composed inside a vertical 9:16 portrait frame. Use minimalist two-dimensional black line animation. Show the same consistent stick figure with a hollow circular head, occasional simple line expressions, no detailed facial features, no hair, no clothing, no filled body, stable proportions, connected line limbs, and uniform medium line weight. Exactly two arms and two legs are visible per figure. Each limb appears only in its current pose: raising or lowering the right arm replaces that arm's previous line, never leaving a resting arm beneath an active arm. The figure stays black; accent colors affect only props and graphic effects. Three identical stick figures appear in this segment, all built to that same description. A static medium shot frames the same white floor inside the vertical portrait frame. The center figure stands in the middle of the frame holding the warm-gold wine vessel with the short curved handle in his left hand; the right-hand figure steps in from the right edge of the frame and his line arm slams down onto the vessel and pulls it away with a fast, sharp motion that shakes the red wine inside. The center figure's line tip freezes in mid-air, and one half-drawn electric-blue leg hangs from his snake in the lower part of the frame. An off-screen adult male narrator speaking standard Mandarin Chinese, with a warm, clean baritone, medium-low pitch, gentle chest resonance, no raspiness or breathiness, calm conversational delivery, restrained pitch variation, steady speaking pace, and close, dry studio sound (S1) says in an off-screen voiceover: <d>[Chinese] 另一个人的蛇画成了。</d> while all figures stay silent with their simple line mouths completely closed and no character dialogue occurs. The camera holds a static shot. [Shot 2] At 00:03.000, the shot cuts to a medium close-up of the right-hand figure. He tips the gold vessel to his mouth and leans his head back, filling the upper half of the portrait frame; a thin vivid-red line of wine flows from the vessel mouth into his mouth and is swallowed. The camera pans left with large amplitude at fast speed to the center figure's empty left hand, which opens and closes around nothing, while the half-drawn electric-blue leg detaches from his snake and drops onto the white floor. The same narrator (S1) continues in the same off-screen voiceover in standard Mandarin: <d>[Chinese] 他喝掉了那壶酒。那壶酒本来就是你的，你却还在画。</d> while the figures stay silent with their mouths completely closed. [Shot 3] At 00:07.000, the camera pulls out with large amplitude at slow speed to a high-angle overhead wide shot. The center figure stands alone in the middle of the white floor beside his electric-blue snake with two legs; the loose extra strokes crumble into a short random blue squiggle; the right-hand figure walks out of the frame at the right edge carrying the gold vessel; large empty white negative space remains along the top and bottom of the vertical portrait frame, leaving the final question area clear of action. The same narrator (S1) continues in the same off-screen voiceover in standard Mandarin: <d>[Chinese] 你在给什么添脚？</d> while the center figure stays silent with his simple line mouth completely closed. In the last second the frame holds on the flat pure white canvas with the small center figure and his snake low in the frame, and no other figure is visible. Throughout the segment the canvas stays flat pure white with no texture, gradient, shadow, or depth; every spoken word is Chinese with no English voiceover and no character dialogue; no on-screen text, letters, numbers, captions, subtitles, signs, logos, or watermarks; no speech bubbles or dialogue boxes; no photorealistic people, faces, or 3D rendering; no extra limbs, fingers, detached hands, or additional figures beyond the three.
+
+overall_soundscape: A flat slap lands on the metal vessel with a dull knock, followed by liquid pouring and a single swallow. One small dry snap is heard as the extra blue stroke detaches and drops onto the floor, and footsteps then walk away across the bare floor and fade out.
+
+non_diegetic_music: The same sparse piano pattern continues at identical tempo and instrumentation but with fewer notes, thinning to one isolated low piano note that decays into silence by the end of the segment.
+```
+
+**本段核对**
+- 三镜头、切点 `00:03.000` / `00:07.000` 均在 10 秒内；首镜头无时间码；规格：9:16 / 480p / 10s / 中文旁白。
+- 中文旁白 37 字（9+7+14+7，不含标点），结尾问句落在 `[8.2–10.0s]`，与「上下大片纯白负空间」同步。
+- 收尾：多余笔画散成乱线，拿酒的人从右缘出画，画面回到纯白——与底稿「真相 + 点题」一致。
+- **出点**：全片结束，无下一段。
+
+---
+
+## 七、拼接与全片自检
+
+| 时间区间 | 底稿段落 | 本文件段落 | 叙事任务 | 中文旁白 | 镜数 / 切点 |
+|---|---|---|---|---|---|
+| `0–10s` | 黄金钩子 + 建立冲突 | `## 0–10s` | 酒壶落地、规矩公布、三人开画、主角先画成 | 23 字 | 3 / 00:03.000、00:07.000 |
+| `10–20s` | 打破常识 + 拉出内幕 | `## 10–20s` | 他给蛇添两只脚、后景别人的蛇先合拢 | 34 字 | 3 / 00:03.000、00:07.000 |
+| `20–30s` | 真相揭秘 + 升华互动 | `## 20–30s` | 酒被拿走、他手里只剩空气、点题抛问 | 37 字 | 3 / 00:03.000、00:07.000 |
+
+- 三段**硬切**拼接，名义 3 × 10s = 30s（H3 实测每段 243 帧 = 10.125s，拼接约 30.4s，见第五节）；BGM 从第 1 段连续到第 3 段，接点处不重新起音乐。
+- 三段同画风锚点、同三名人物、同三色契约；酒壶、蓝蛇、红液面是三个连续性锚点。
+- 生成画面内不出现任何文字（含中文字幕）；片头「画蛇添足」与片尾问句在后期叠加。
+- 校验清单：
+
+- [x] 依据底稿 `directing-stickman-videos.txt` 与 `h3-prompt-writing` T2VA 结构成稿
+- [x] 分段合计 30s，每段 10s（名义 3 × 10s；H3 实测每段 243 帧 = 10.125s，见第五节）
+- [x] 中文配音在每段 spec 行、旁白 `<d>[Chinese]` 与声音档案中明确体现
+- [x] 480p 在每段 spec 行与参数表（`short_edge: 480`，480 × 864）中体现
+- [x] 9:16 在每段 spec 行、描述内竖屏构图与参数表（`aspect_ratio: "9:16"`）中体现
+- [x] 未新增/改写情节、角色；台词逐字取自底稿中文对照
+- [x] 与底稿冲突处（画幅、旁白语言）已按四项要求处理并在第二节写明
+
+> **执行风险（承自 `h3-prompt-writing.txt` 的同类提示，未在本机实测中文旁白版）**：每段 736–841 词，比英文旁白版多约 110–175 词，多出来的主要是 9:16 竖屏构图与中文旁白说明（英文旁白版实测 603–668 词可跑通）。若接口拒绝长提示词或遵循度下降，按此顺序删减：先删环境形容词与重复修饰，务必保留 ① Style 1 画风锚点 ② 三个火柴人与三件道具的锁定 ③ 三镜头与切点 ④ `<d>[Chinese]` 旁白句 ⑤ 画布、9:16 构图与画面文字负面约束。

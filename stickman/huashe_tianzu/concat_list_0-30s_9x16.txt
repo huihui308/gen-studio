@@ -1,0 +1,3 @@
+file '/mnt/sdb1/soft/deploy-models/stickman/huashe_tianzu/0-10s-480p-9x16-h3.mp4'
+file '/mnt/sdb1/soft/deploy-models/stickman/huashe_tianzu/10-20s-480p-9x16-h3.mp4'
+file '/mnt/sdb1/soft/deploy-models/stickman/huashe_tianzu/20-30s-480p-9x16-h3.mp4'

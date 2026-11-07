@@ -1,0 +1,13 @@
+{
+  "model": "/mnt/sdb1/soft/deploy-models/h3/models/MiniMax-H3",
+  "prompt": "清代康熙末年畅春园寝宫深夜：暖帐之内老年皇帝卧于龙榻，榻前沿跪着皇子与白发重臣候命，多支烛台火光摇曳，窗棂透入冷蓝夜色。油画厚涂质感，电影写实剧照风格，伦勃朗式侧光，暗金赭红暖调与夜景冷蓝对比，压抑凝重。镜头缓慢横移。无现代物件，无文字水印。",
+  "seconds": 4,
+  "task": "t2va",
+  "conditions": [],
+  "target": {"short_edge": 768, "aspect_ratio": "16:9", "duration_seconds": 4.0},
+  "num_outputs_per_prompt": 1,
+  "num_inference_steps": 20,
+  "flow_shift": 12.0,
+  "audio_flow_shift": 3.0,
+  "seed": 1106
+}

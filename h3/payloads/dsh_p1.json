@@ -1,0 +1,13 @@
+{
+  "model": "/mnt/sdb1/soft/deploy-models/h3/models/MiniMax-H3",
+  "prompt": "清代康熙年间紫禁城乾清宫内景：老年康熙帝身着明黄朝服立于宝座前，神情威严；两侧分列四位成年皇子，着清代王公补服朝冠，躬身侍立。油画厚涂质感，电影写实剧照风格，伦勃朗式侧光，烛光暖调，暗金与赭红配色，庄严肃穆。镜头缓慢推近。无现代物件，无文字水印。",
+  "seconds": 4,
+  "task": "t2va",
+  "conditions": [],
+  "target": {"short_edge": 768, "aspect_ratio": "16:9", "duration_seconds": 4.0},
+  "num_outputs_per_prompt": 1,
+  "num_inference_steps": 20,
+  "flow_shift": 12.0,
+  "audio_flow_shift": 3.0,
+  "seed": 1105
+}

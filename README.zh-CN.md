@@ -2,7 +2,7 @@
 
 [English](README.md) | **简体中文**
 
-在本机（2 × RTX 3080 Ti 12 GB，driver 580.196.07）上**可复现地部署开源生图 / 生视频模型**，并提供访问它们的 **web 控制台**：环境构建 → 权重下载 → 起服务 → 发请求 → 登录后按所选显卡启停模型、核对运行状态。
+在本机（2 × RTX 3080 Ti 12 GB，driver 580.196.07）上**可复现地部署开源生图 / 生视频模型**，并提供访问它们的 **web 控制台** 与供其他服务调用的 **HTTP 生图接口**：环境构建 → 权重下载 → 起服务 → 发请求 → 登录后按所选显卡启停模型、核对运行状态。
 
 只提交脚本与文档；conda 环境、模型权重、推理产物、日志均不入库（见 `.gitignore`）。
 
@@ -22,6 +22,8 @@ qwen-image/             Qwen-Image 2.1 Turbo 文生图（ComfyUI 0.42.0，int8_c
   download_turbo.sh     从 ModelScope 拉 DiT / 文本编码器 / VAE（断点续传，按字节数校验）
   serve.sh              在 GPU0 上起 ComfyUI，端口 30020，产物落 qwen-image/output
   t2i.py                提交一次文生图 workflow、轮询、报耗时与显存峰值
+  gen_api.py            HTTP 生图服务：提示词 + ≤16 张参考图（文生图 / 编辑），端口 30021
+  serve_api.sh          gen_api.py 的 start | stop | status（后台常驻，pid 与日志落 logs/）
 web/                    登录式控制台：按所选显卡启停两个模型，查看真实运行状态
 ```
 
@@ -163,7 +165,25 @@ ComfyUI 首次启动约 4 分钟（import + CUDA JIT），日志停在 `Using py
 
 采样用模板里的 Turbo 8 步 schedule：sigmas `1.0, 0.978453, 0.95418, 0.926626, 0.89508, 0.845148, 0.704534, 0.414568, 0`，sampler `euler`，`cfg=1`。单独改步数没有意义——8 步够用正是因为这条 schedule。
 
-### 4. 本机实测（GPU0，3080 Ti 12 GB）
+### 4. HTTP 生图服务（可选）：提示词 + 参考图
+
+`gen_api.py` 把官网 Qwen-Image-2.1-Turbo 的那套能力（提示词 + ≤16 张参考图 → 生图 / 编辑）暴露成 HTTP 接口，供其他服务调用；纯标准库，`serve_api.sh` 负责后台常驻。
+
+```bash
+./serve_api.sh start        # http://127.0.0.1:30021（GEN_STUDIO_IMAGE_API_HOST / _PORT 可覆盖）
+curl -s http://127.0.0.1:30021/generate -H 'Content-Type: application/json' \
+  -d '{"prompt":"把 <image1> 重绘成水彩绘本画风","images":["/abs/ref.png"],"resolution":1024}'
+```
+
+- `GET /health`（含 `comfy_reachable`）、`POST /generate`（JSON 或 `multipart/form-data` 上传）
+- 参数：`prompt`（必填）、`images`（≤16 张；本地路径 / `{"b64": …}` / 上传文件）、`resolution`（参考图面积预算，64–2048 且为 32 的倍数）、`width`/`height`（成对，≤2048；编辑模式下需贴近 `image_1`，否则画面漂移）、`seed`、`cfg`、`negative_prompt`、`tag`、`return_b64`、`timeout_s`
+- 尺寸语义：有参考图 → 画布跟随 `image_1`、面积约 `resolution²`；给了 `width`/`height` → 按该尺寸出图；无参考图 → `resolution × resolution` 方图
+- 返回：`{"ok":true,"prompt_id","seed","width","height","elapsed_s","peak_vram_mib","images":[{path,filename,subfolder,width,height,url}]}`；`return_b64=true` 时每张图附带 base64。失败为 `{"ok":false,"error":{"code","message"}}`：`missing_prompt` / `invalid_param` / `too_many_images` / `image_not_found` / `unsupported_image_type` / `payload_too_large`，`comfy_unreachable`(503)、`comfy_rejected` / `generation_failed`(502)、`generation_timeout`(504)
+- 接线要点：Autogrow 参考图槽位在 API 提示词里是 **`images.image_1` … `images.image_16`**——平铺的 `image_1` 能过 `/prompt` 校验，但执行时报 `unexpected keyword argument 'image_1'`
+- 参考图暂存 `ComfyUI/input/`，任务结束即删；产物落 `output/qwen-image-2.1-turbo/`
+- 实测（GPU0，1024²）：参考图重绘 58 s、纯文生图 35 s、multipart 上传 56 s。无鉴权（仅绑回环）
+
+### 5. 本机实测（GPU0，3080 Ti 12 GB）
 
 | 分辨率 | 耗时 | 峰值显存 |
 |---|---|---|
@@ -174,7 +194,7 @@ ComfyUI 首次启动约 4 分钟（import + CUDA JIT），日志停在 `Using py
 
 四档全部不 OOM；峰值贴着 11.7/12 GiB，因为 ComfyUI 把量化权重压在 pinned RAM 里按需搬。中文文字渲染准确（「千问图像 2.1」逐字正确）；提示词里没指定的招牌会变伪汉字，属正常。
 
-### 5. 已知坑
+### 6. 已知坑
 
 1. 本机清华源对 `nvidia-*` 轮子限速到 ~230 KiB/s，同一个包 `download.pytorch.org` 是 12 MB/s —— torch 系依赖走 pytorch cu130 index。
 2. ComfyUI 首次启动约 4 分钟（CUDA JIT），日志停在 `Using pytorch attention` 时别杀进程。

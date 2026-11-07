@@ -2,7 +2,7 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-Reproducible deployment of open-source **image and video generation models** on a single workstation (2 × RTX 3080 Ti, 12 GB each, driver 580.196.07), plus a **web console** to operate them: environment build → weight download → serve → request → login-protected UI for starting/stopping models on a chosen GPU and watching their status.
+Reproducible deployment of open-source **image and video generation models** on a single workstation (2 × RTX 3080 Ti, 12 GB each, driver 580.196.07), plus a **web console** to operate them and a small **HTTP image service** that other services can call: environment build → weight download → serve → request → login-protected UI for starting/stopping models on a chosen GPU and watching their status.
 
 Only scripts and docs are committed. Conda envs, model weights, inference outputs and logs stay out of git (see `.gitignore`).
 
@@ -22,6 +22,8 @@ qwen-image/             Qwen-Image 2.1 Turbo, text to image (ComfyUI 0.42.0, int
   download_turbo.sh     Fetch DiT / text encoder / VAE from ModelScope (resumable, byte-size verified)
   serve.sh              Serve ComfyUI on GPU 0, port 30020, outputs under qwen-image/output
   t2i.py                Submit one t2i workflow, poll, report wall time and peak VRAM
+  gen_api.py            HTTP service for other services: prompt + up to 16 reference images (t2i / edit), port 30021
+  serve_api.sh          start | stop | status for gen_api.py (detached, pid + log under logs/)
 web/                    Login-protected console: start/stop both models on an explicitly chosen GPU, live status
 stickman/               Content line: 30-second vertical shorts shot with the h3 pipeline
   kezhou-qiujian/       《刻舟求剑》 — three 10 s H3 clips hard-cut into one 30 s short, plus the exact prompts
@@ -166,7 +168,25 @@ ComfyUI takes ~4 minutes on the first start (import + CUDA JIT); a log stuck at 
 
 Sampling is the Turbo 8-step schedule baked into the template: sigmas `1.0, 0.978453, 0.95418, 0.926626, 0.89508, 0.845148, 0.704534, 0.414568, 0`, sampler `euler`, `cfg=1`. Changing the step count alone does nothing — the schedule is what makes 8 steps enough.
 
-### 4. Measured on this box (GPU0, 3080 Ti 12 GB)
+### 4. HTTP service (optional): prompt + reference images
+
+`gen_api.py` exposes the same capability the Qwen-Image-2.1-Turbo web demo has — a prompt plus up to 16 reference images (text-to-image or edit) — over plain HTTP for other services. It is stdlib-only; `serve_api.sh` keeps it detached.
+
+```bash
+./serve_api.sh start        # http://127.0.0.1:30021 (GEN_STUDIO_IMAGE_API_HOST / _PORT)
+curl -s http://127.0.0.1:30021/generate -H 'Content-Type: application/json' \
+  -d '{"prompt":"restyle <image1> as a watercolour children-book page","images":["/abs/ref.png"],"resolution":1024}'
+```
+
+- `GET /health` (includes `comfy_reachable`), `POST /generate` — JSON body or `multipart/form-data` upload
+- Parameters: `prompt` (required), `images` (≤16; local path, `{"b64": …}`, or an uploaded file), `resolution` (reference-image pixel budget, 64–2048 in multiples of 32), `width`/`height` (paired, ≤2048; keep close to `image_1` or the edit drifts), `seed`, `cfg`, `negative_prompt`, `tag`, `return_b64`, `timeout_s`
+- Output semantics: with `images`, the canvas follows `image_1` at ≈`resolution²` area; with `width`/`height` the given size wins; no images → `resolution × resolution` square
+- Response: `{"ok":true,"prompt_id","seed","width","height","elapsed_s","peak_vram_mib","images":[{path,filename,subfolder,width,height,url}]}`; base64 is added when `return_b64=true`. Errors are `{"ok":false,"error":{"code","message"}}`: `missing_prompt` / `invalid_param` / `too_many_images` / `image_not_found` / `unsupported_image_type` / `payload_too_large`, `comfy_unreachable` (503), `comfy_rejected` / `generation_failed` (502), `generation_timeout` (504)
+- Wiring note: the Autogrow reference slots are `images.image_1` … `images.image_16` **in the API prompt** — flat `image_1` passes `/prompt` validation but dies at execution with `unexpected keyword argument 'image_1'`
+- Reference images are staged into `ComfyUI/input/` and deleted after the job; outputs land in `output/qwen-image-2.1-turbo/`
+- Measured (GPU0, 1024²): reference restyle 58 s, pure t2i 35 s, multipart upload 56 s. No auth (bind loopback only)
+
+### 5. Measured on this box (GPU0, 3080 Ti 12 GB)
 
 | Size | Wall time | Peak VRAM |
 |---|---|---|
@@ -177,7 +197,7 @@ Sampling is the Turbo 8-step schedule baked into the template: sigmas `1.0, 0.97
 
 All sizes fit; peak VRAM stays pinned at ~11.7/12 GiB because ComfyUI streams quantized weights from pinned RAM. Chinese text renders accurately (`千问图像 2.1` came out character-perfect); unspecified signage in a prompt becomes pseudo-glyphs, which is expected.
 
-### 5. Known issues
+### 6. Known issues
 
 1. The PyPI mirror here throttles `nvidia-*` wheels to ~230 KiB/s while `download.pytorch.org` gives 12 MB/s for the same file — install torch and its CUDA deps from the pytorch cu130 index.
 2. The first ComfyUI start takes ~4 min (CUDA JIT); do not kill it while the log sits at `Using pytorch attention`.

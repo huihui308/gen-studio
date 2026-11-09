@@ -6,7 +6,7 @@
 Qwen-Image-2.1-Turbo 对齐：提示词 + 参考图（≤16 张）→ 生成/编辑。
 
 启动:
-  ./gen_api.py                          # 127.0.0.1:30021
+  ./gen_api.py                          # 0.0.0.0:30021（局域网设备可直连；本机用设 --host 127.0.0.1）
   ./gen_api.py --port 30021 --host 0.0.0.0
   GEN_STUDIO_IMAGE_API_HOST=0.0.0.0 ./gen_api.py
 
@@ -14,6 +14,7 @@ Qwen-Image-2.1-Turbo 对齐：提示词 + 参考图（≤16 张）→ 生成/编
 接口
 ────────────────────────────────────────────────────────────────
 GET  /health      存活与后端可达性
+GET  /result      下载产物：/result?filename=xx.png&subfolder=qwen-image-2.1-turbo
 POST /generate    生成图片（JSON 或 multipart/form-data 上传）
 
 ────────────────────────────────────────────────────────────────
@@ -568,7 +569,8 @@ class Handler(BaseHTTPRequestHandler):
             traceback.print_exc()
 
     def do_GET(self):
-        if self.path.rstrip("/") in ("", "/health", "/v1/health"):
+        path = self.path.split("?")[0].rstrip("/")
+        if path in ("", "/health", "/v1/health"):
             reachable = True
             try:
                 get_json(self.comfy_host, "/system_stats", timeout=5)
@@ -578,12 +580,38 @@ class Handler(BaseHTTPRequestHandler):
                              "comfy": self.comfy_host,
                              "comfy_reachable": reachable,
                              "endpoints": {"generate": "POST /generate",
-                                           "health": "GET /health"}})
+                                           "health": "GET /health",
+                                           "result": "GET /result?filename=&subfolder="}})
             self._log(200)
+        elif path == "/result":
+            self._serve_result()
         else:
             self._send(404, {"ok": False, "error": {
                 "code": "not_found", "message": f"未知路径: {self.path}"}})
             self._log(404)
+
+    def _serve_result(self):
+        """把产物 PNG 直接发给远端调用方（不必再暴露 ComfyUI 的 /view）"""
+        qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        fname = (qs.get("filename") or [""])[0]
+        sub = (qs.get("subfolder") or [""])[0]
+        if not fname or "/" in fname or "\\" in fname:
+            self._error(ApiError(400, "invalid_param", "filename 必填且不能含路径分隔符"))
+            return
+        base = os.path.realpath(OUTPUT_DIR)
+        target = os.path.realpath(os.path.join(base, sub, fname))
+        if not target.startswith(base + os.sep) or not os.path.isfile(target):
+            self._error(ApiError(404, "not_found", f"产物不存在: {sub}/{fname}"))
+            return
+        with open(target, "rb") as f:
+            body = f.read()
+        ctype = "image/png" if fname.lower().endswith(".png") else "application/octet-stream"
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+        self._log(200, f"result {fname} {len(body)}B")
 
     def do_POST(self):
         if self.path.split("?")[0].rstrip("/") != "/generate":

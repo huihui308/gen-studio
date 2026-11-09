@@ -178,13 +178,14 @@ curl -s http://127.0.0.1:30021/generate -H 'Content-Type: application/json' \
   -d '{"prompt":"restyle <image1> as a watercolour children-book page","images":["/abs/ref.png"],"resolution":1024}'
 ```
 
-- `GET /health` (includes `comfy_reachable`), `POST /generate` — JSON body or `multipart/form-data` upload
+- `GET /health` (includes `comfy_reachable`), `GET /result?filename=&subfolder=` (downloads a generated PNG, so remote callers never need ComfyUI's `/view`), `POST /generate` — JSON body or `multipart/form-data` upload
+- Listens on `0.0.0.0:30021` by default so other devices/programs on the LAN can call it (`--host 127.0.0.1` to keep it local); no auth, keep it inside a trusted network
 - Parameters: `prompt` (required), `images` (≤16; local path, `{"b64": …}`, or an uploaded file), `resolution` (reference-image pixel budget, 64–2048 in multiples of 32), `width`/`height` (paired, ≤2048; keep close to `image_1` or the edit drifts), `seed`, `cfg`, `negative_prompt`, `tag`, `return_b64`, `timeout_s`
 - Output semantics: with `images`, the canvas follows `image_1` at ≈`resolution²` area; with `width`/`height` the given size wins; no images → `resolution × resolution` square
 - Response: `{"ok":true,"prompt_id","seed","width","height","elapsed_s","peak_vram_mib","images":[{path,filename,subfolder,width,height,url}]}`; base64 is added when `return_b64=true`. Errors are `{"ok":false,"error":{"code","message"}}`: `missing_prompt` / `invalid_param` / `too_many_images` / `image_not_found` / `unsupported_image_type` / `payload_too_large`, `comfy_unreachable` (503), `comfy_rejected` / `generation_failed` (502), `generation_timeout` (504)
 - Wiring note: the Autogrow reference slots are `images.image_1` … `images.image_16` **in the API prompt** — flat `image_1` passes `/prompt` validation but dies at execution with `unexpected keyword argument 'image_1'`
 - Reference images are staged into `ComfyUI/input/` and deleted after the job; outputs land in `output/qwen-image-2.1-turbo/`
-- Measured (GPU0, 1024²): reference restyle 58 s, pure t2i 35 s, multipart upload 56 s. No auth (bind loopback only)
+- Measured (GPU0, 1024²): reference restyle 58 s, pure t2i 35 s, multipart upload 56 s, and 41 s for a text-to-image call issued from another machine on the LAN
 
 ### 5. Measured on this box (GPU0, 3080 Ti 12 GB)
 

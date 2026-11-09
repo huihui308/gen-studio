@@ -175,13 +175,14 @@ curl -s http://127.0.0.1:30021/generate -H 'Content-Type: application/json' \
   -d '{"prompt":"把 <image1> 重绘成水彩绘本画风","images":["/abs/ref.png"],"resolution":1024}'
 ```
 
-- `GET /health`（含 `comfy_reachable`）、`POST /generate`（JSON 或 `multipart/form-data` 上传）
+- `GET /health`（含 `comfy_reachable`）、`GET /result?filename=&subfolder=`（直接下载产物 PNG，远端不必再访问 ComfyUI 的 `/view`）、`POST /generate`（JSON 或 `multipart/form-data` 上传）
+- 默认监听 `0.0.0.0:30021`，局域网内其他设备/程序可直接调用（`--host 127.0.0.1` 可收回本机）；无鉴权，只放在可信内网
 - 参数：`prompt`（必填）、`images`（≤16 张；本地路径 / `{"b64": …}` / 上传文件）、`resolution`（参考图面积预算，64–2048 且为 32 的倍数）、`width`/`height`（成对，≤2048；编辑模式下需贴近 `image_1`，否则画面漂移）、`seed`、`cfg`、`negative_prompt`、`tag`、`return_b64`、`timeout_s`
 - 尺寸语义：有参考图 → 画布跟随 `image_1`、面积约 `resolution²`；给了 `width`/`height` → 按该尺寸出图；无参考图 → `resolution × resolution` 方图
 - 返回：`{"ok":true,"prompt_id","seed","width","height","elapsed_s","peak_vram_mib","images":[{path,filename,subfolder,width,height,url}]}`；`return_b64=true` 时每张图附带 base64。失败为 `{"ok":false,"error":{"code","message"}}`：`missing_prompt` / `invalid_param` / `too_many_images` / `image_not_found` / `unsupported_image_type` / `payload_too_large`，`comfy_unreachable`(503)、`comfy_rejected` / `generation_failed`(502)、`generation_timeout`(504)
 - 接线要点：Autogrow 参考图槽位在 API 提示词里是 **`images.image_1` … `images.image_16`**——平铺的 `image_1` 能过 `/prompt` 校验，但执行时报 `unexpected keyword argument 'image_1'`
 - 参考图暂存 `ComfyUI/input/`，任务结束即删；产物落 `output/qwen-image-2.1-turbo/`
-- 实测（GPU0，1024²）：参考图重绘 58 s、纯文生图 35 s、multipart 上传 56 s。无鉴权（仅绑回环）
+- 实测（GPU0，1024²）：参考图重绘 58 s、纯文生图 35 s、multipart 上传 56 s；从局域网另一台机器发起的纯文生图 41 s，产物可经 `/result` 直接下载
 
 ### 5. 本机实测（GPU0，3080 Ti 12 GB）
 

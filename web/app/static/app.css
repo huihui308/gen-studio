@@ -717,6 +717,13 @@ a:hover {
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
+/* 参数网格里的输入框要与下拉框同高同字号（种子输入框曾比 .select 高 4px、偏大） */
+.param-grid .input {
+  height: 40px;
+  font-size: 13px;
+  padding: 0 12px;
+}
+
 .input:focus,
 .select:focus {
   outline: none;
@@ -1507,6 +1514,39 @@ a:hover {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
+  align-items: start;
+}
+
+/* 同一行里的控件顶对齐：标签、输入框、说明各占自己的行高 */
+.param-grid > .field {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.param-grid > .field > .input,
+.param-grid > .field > .select {
+  margin-top: 0;
+}
+
+/* .select 的 flex:1 只在横向 select-row 里需要；放进纵向字段会被拉伸变高 */
+.param-grid > .field > .select {
+  flex: none;
+}
+
+.size-preview {
+  font-weight: 600;
+  color: #334155;
+}
+
+.param-grid.param-grid-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (max-width: 760px) {
+  .param-grid.param-grid-3 {
+    grid-template-columns: 1fr;
+  }
 }
 
 .generate-note {
@@ -1595,6 +1635,70 @@ a:hover {
   max-height: 520px;
   border-radius: 6px;
   background: #fff;
+  cursor: zoom-in;
+}
+
+.image-wrap img:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.image-zoom-hint {
+  margin: -6px 0 14px;
+}
+
+body.lightbox-open {
+  overflow: hidden;
+}
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: rgba(6, 15, 26, 0.88);
+  backdrop-filter: blur(2px);
+}
+
+.lightbox[hidden] {
+  display: none;
+}
+
+.lightbox-image {
+  display: block;
+  max-width: min(96vw, 1600px);
+  max-height: 92vh;
+  cursor: zoom-out;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+}
+
+.lightbox-close {
+  position: absolute;
+  top: 14px;
+  right: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.lightbox-close:hover,
+.lightbox-close:focus-visible {
+  background: rgba(255, 255, 255, 0.22);
+  outline: none;
 }
 
 .result-actions {
@@ -1679,6 +1783,10 @@ a:hover {
   .generate-card,
   .result-card {
     min-height: 0;
+  }
+
+  .param-grid.param-grid-3 {
+    grid-template-columns: 1fr;
   }
 }
 

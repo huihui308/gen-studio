@@ -15,6 +15,9 @@ from fastapi.testclient import TestClient
 from app.imagegen import (
     ImageServiceError,
     ImageValidationError,
+    preview_size,
+    resolve_size,
+    snap_resolution,
     sniff_image,
     validate_request,
     validate_upload,
@@ -54,13 +57,16 @@ class FakeImageClient:
     def healthy(self) -> bool:
         return self.healthy_state
 
-    def generate(self, prompt, resolution, *, seed=None, upload=None):
+    def generate(self, prompt, resolution, *, seed=None, upload=None,
+                 width=None, height=None):
         self.calls.append(
             {
                 "prompt": prompt,
                 "resolution": resolution,
                 "seed": seed,
                 "upload": upload,
+                "width": width,
+                "height": height,
             }
         )
         if self.error is not None:
@@ -83,6 +89,21 @@ def _client_with(app) -> TestClient:
 # ------------------------------------------------------------------ page
 
 
+def test_page_allows_data_and_blob_images_in_csp(image_client):
+    """The preview uses a data: URL; blob: is kept for the thumbnail/download path.
+
+    Regression: img-src previously only allowed 'self' data:, so a blob: preview
+    was blocked by the browser and the result showed a broken image.
+    """
+
+    app, fake = image_client
+    client = _client_with(app)
+    login(client)
+    page = client.get("/image")
+    csp = page.headers["content-security-policy"]
+    assert "img-src 'self' data: blob:" in csp
+
+
 def test_image_page_requires_login(make_app):
     client = TestClient(make_app())
     response = client.get("/image", follow_redirects=False)
@@ -99,7 +120,25 @@ def test_image_page_renders_controls(image_client):
     assert 'id="image-form"' in page.text
     assert 'id="reference"' in page.text
     assert 'id="resolution"' in page.text
+    assert 'id="aspect"' in page.text
+    assert '<option value="1080" >' in page.text or '<option value="1080">' in page.text
+    assert 'id="size-preview"' in page.text
+    assert '<option value="16:9">16:9</option>' in page.text
     assert "/image" in page.text  # nav entry is active
+
+
+def test_result_image_supports_click_to_zoom(image_client):
+    """The result image is a button that opens a full-screen preview."""
+
+    app, fake = image_client
+    client = _client_with(app)
+    login(client)
+    page = client.get("/image").text
+    assert 'id="result-image"' in page
+    assert 'id="lightbox"' in page
+    assert 'id="lightbox-image"' in page
+    assert 'id="lightbox-close"' in page
+    assert 'aria-label="生成结果，点击放大预览"' in page
 
 
 # ------------------------------------------------------------ validation
@@ -203,6 +242,52 @@ def test_text_to_image_returns_preview_payload(image_client):
     assert call["upload"] is None
 
 
+def test_aspect_ratio_is_resolved_into_width_height(image_client):
+    app, fake = image_client
+    client = _client_with(app)
+    login(client)
+    token = csrf_token(client, "/image")
+    response = client.post(
+        "/api/image/generate",
+        data={
+            "csrf_token": token,
+            "prompt": "一只橘猫",
+            "resolution": "1024",
+            "aspect": "16:9",
+        },
+    )
+    assert response.status_code == 200
+    call = fake.calls[0]
+    assert (call["width"], call["height"]) == (1376, 768)
+
+
+def test_auto_aspect_sends_no_explicit_size(image_client):
+    app, fake = image_client
+    client = _client_with(app)
+    login(client)
+    token = csrf_token(client, "/image")
+    client.post(
+        "/api/image/generate",
+        data={"csrf_token": token, "prompt": "x", "resolution": "1024", "aspect": ""},
+    )
+    call = fake.calls[0]
+    assert call["width"] is None and call["height"] is None
+
+
+def test_bad_aspect_rejected(image_client):
+    app, fake = image_client
+    client = _client_with(app)
+    login(client)
+    token = csrf_token(client, "/image")
+    response = client.post(
+        "/api/image/generate",
+        data={"csrf_token": token, "prompt": "x", "resolution": "1024", "aspect": "7:5"},
+    )
+    assert response.status_code == 400
+    assert "宽高比" in response.json()["error"]
+    assert fake.calls == []
+
+
 def test_reference_upload_reaches_client_as_multipart(image_client):
     app, fake = image_client
     client = _client_with(app)
@@ -219,7 +304,8 @@ def test_reference_upload_reaches_client_as_multipart(image_client):
     )
     assert response.status_code == 200
     call = fake.calls[0]
-    assert call["resolution"] == 1328
+    # 1328 is not a multiple of 32: the console snaps it to the service grid.
+    assert call["resolution"] == 1344
     assert call["upload"] is not None
     filename, data = call["upload"]
     assert filename == "reference.png"
@@ -271,6 +357,95 @@ def test_validate_request_defaults(prompt, resolution, seed, expected_seed):
     _, clean_resolution, clean_seed = validate_request(prompt, resolution, seed)
     assert clean_resolution == int(resolution)
     assert clean_seed == expected_seed
+
+
+@pytest.mark.parametrize(
+    ("aspect", "expected"),
+    [
+        ("", None),
+        ("auto", None),
+        ("1:1", (1024, 1024)),
+        ("4:3", (1184, 896)),
+        ("16:9", (1376, 768)),
+        ("9:16", (768, 1376)),
+        ("21:9", (1568, 672)),
+    ],
+)
+def test_resolve_size_maps_ratio_to_grid(aspect, expected):
+    assert resolve_size(aspect, 1024) == expected
+
+
+@pytest.mark.parametrize("aspect", ["1:1", "4:3", "16:9", "21:9", "9:16"])
+@pytest.mark.parametrize("resolution", [768, 1024, 1328, 1536, 2048])
+def test_resolved_sizes_stay_on_grid_and_under_the_cap(aspect, resolution):
+    width, height = resolve_size(aspect, resolution)
+    assert width % 32 == 0 and height % 32 == 0
+    assert 64 <= width <= 2048 and 64 <= height <= 2048
+
+
+def test_unknown_aspect_rejected():
+    with pytest.raises(ImageValidationError):
+        resolve_size("7:5", 1024)
+
+
+def test_snap_resolution_aligns_to_service_grid():
+    assert snap_resolution(1080) == 1088
+    assert snap_resolution(720) == 704
+    assert snap_resolution(1024) == 1024
+    assert snap_resolution(2048) == 2048
+
+
+def test_preview_size_reports_effective_canvas():
+    assert preview_size(1080, "") == {
+        "resolution": 1088, "aspect": "auto", "auto": True,
+        "width": 1088, "height": 1088,
+    }
+    square = preview_size(1080, "16:9")
+    assert square["auto"] is False
+    assert (square["width"], square["height"]) == (1440, 800)
+    assert square["resolution"] == 1088
+
+
+def test_size_endpoint_returns_effective_canvas(image_client):
+    app, _fake = image_client
+    client = _client_with(app)
+    login(client)
+    response = client.get("/api/image/size?resolution=1080&aspect=16:9")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert (payload["width"], payload["height"]) == (1440, 800)
+    assert payload["resolution"] == 1088
+
+
+def test_size_endpoint_rejects_unknown_resolution(image_client):
+    app, _fake = image_client
+    client = _client_with(app)
+    login(client)
+    response = client.get("/api/image/size?resolution=999&aspect=16:9")
+    assert response.status_code == 400
+
+
+def test_size_endpoint_requires_login(image_client):
+    app, _fake = image_client
+    client = _client_with(app)
+    response = client.get("/api/image/size?resolution=1024", follow_redirects=False)
+    assert response.status_code in (401, 303)
+
+
+def test_generate_with_1080_sends_snapped_resolution(image_client):
+    app, fake = image_client
+    client = _client_with(app)
+    login(client)
+    token = csrf_token(client, "/image")
+    client.post(
+        "/api/image/generate",
+        data={"csrf_token": token, "prompt": "x", "resolution": "1080",
+              "aspect": "16:9"},
+    )
+    call = fake.calls[0]
+    assert call["resolution"] == 1088
+    assert (call["width"], call["height"]) == (1440, 800)
 
 
 def test_validate_request_rejects_empty_prompt():

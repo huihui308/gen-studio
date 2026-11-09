@@ -52,17 +52,28 @@
         </div>
       </div>
 
-      <div class="param-grid">
+      <div class="param-grid param-grid-3">
         <div class="field">
           <label class="field-label" for="resolution">分辨率</label>
           <select class="select" id="resolution" name="resolution">
             {% for value in resolutions %}
             <option value="{{ value }}"{% if value == default_resolution %} selected{% endif %}>
-              {{ value }}{% if value == 1024 %} · 默认{% endif %}
+              {{ value }}{% if value == 1024 %} · 默认{% elif value == 720 %} · 对齐 704{% elif value == 1080 %} · 对齐 1088{% elif value == 1328 %} · 对齐 1344{% endif %}
             </option>
             {% endfor %}
           </select>
-          <p class="hint">传给服务的 <code>resolution</code>：参考图的面积预算（有参考图时输出画布跟随参考图；无参考图时输出该边长的方图）。</p>
+          <p class="hint">传给服务的 <code>resolution</code>：面积预算。1080/720 会按 32 倍数网格对齐（1080 → 1088）。</p>
+          <p class="hint size-preview" id="size-preview">预计输出：—</p>
+        </div>
+
+        <div class="field">
+          <label class="field-label" for="aspect">宽高比</label>
+          <select class="select" id="aspect" name="aspect">
+            {% for value, label in aspect_ratios %}
+            <option value="{{ value }}"{% if value == default_aspect %} selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+          <p class="hint">选具体比例后由控制台按 <code>resolution</code> 的面积预算算出 32 倍数的宽高，交给服务的 <code>width</code>/<code>height</code>；长边上限 2048。</p>
         </div>
 
         <div class="field">
@@ -113,14 +124,17 @@
         <div><dt>已用时间</dt><dd class="mono" id="job-elapsed">0 秒</dd></div>
         <div><dt>分辨率</dt><dd class="mono" id="job-resolution">—</dd></div>
         <div><dt>参考图</dt><dd class="mono" id="job-reference">无</dd></div>
+        <div><dt>宽高比</dt><dd class="mono" id="job-aspect">自动</dd></div>
       </dl>
       <p class="hint">服务没有进度接口，这里只能显示已用时间；请求超时后页面会给出明确错误，不会静默失败。</p>
     </div>
 
     <div id="image-result" hidden>
       <div class="image-wrap">
-        <img id="result-image" alt="生成结果">
+        <img id="result-image" alt="生成结果" role="button" tabindex="0"
+             aria-label="生成结果，点击放大预览">
       </div>
+      <p class="hint image-zoom-hint">点击图片可放大预览；Esc 或点击空白处关闭。</p>
       <div class="result-actions">
         <a class="btn btn-primary" id="download-image" href="#" download>下载图片</a>
         <span class="hint" id="download-hint">文件名取自服务返回的 filename。</span>
@@ -131,6 +145,7 @@
       </div>
       <dl class="meta-grid result-meta">
         <div><dt>分辨率</dt><dd class="mono" id="result-resolution">—</dd></div>
+        <div><dt>宽高比</dt><dd class="mono" id="result-aspect">—</dd></div>
         <div><dt>实际尺寸</dt><dd class="mono" id="result-size">—</dd></div>
         <div><dt>种子</dt><dd class="mono" id="result-seed">—</dd></div>
         <div><dt>生成耗时</dt><dd class="mono" id="result-elapsed">—</dd></div>
@@ -138,6 +153,11 @@
       <p class="hint">图片以 base64 返回，本页不保存历史记录；产物已落在服务侧 output 目录。</p>
     </div>
   </section>
+</div>
+
+<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="生成结果放大预览" hidden>
+  <button class="lightbox-close" type="button" id="lightbox-close" aria-label="关闭预览">×</button>
+  <img class="lightbox-image" id="lightbox-image" alt="生成结果放大预览">
 </div>
 {% endblock %}
 {% block scripts %}<script src="/static/image.js" defer></script>{% endblock %}

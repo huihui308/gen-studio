@@ -51,12 +51,17 @@ from .generation import (
     GenerationValidationError,
 )
 from .imagegen import (
+    ASPECT_RATIOS as IMAGE_ASPECT_RATIOS,
+    DEFAULT_ASPECT as IMAGE_DEFAULT_ASPECT,
     DEFAULT_RESOLUTION as IMAGE_DEFAULT_RESOLUTION,
     RESOLUTIONS as IMAGE_RESOLUTIONS,
     ImageClient,
     ImageError,
     ImageServiceError,
     ImageValidationError,
+    preview_size as preview_image_size,
+    resolve_size as resolve_image_size,
+    snap_resolution,
     validate_request as validate_image_request,
     validate_upload,
 )
@@ -181,7 +186,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response = await call_next(request)
         response.headers.setdefault(
             "Content-Security-Policy",
-            "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; "
+            "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; "
             "connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
         )
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
@@ -537,9 +542,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             active="image",
             resolutions=IMAGE_RESOLUTIONS,
             default_resolution=IMAGE_DEFAULT_RESOLUTION,
+            aspect_ratios=(("", "自动（无参考图=方形，有参考图=跟随参考图）"),
+                           *[(key, key) for key in IMAGE_ASPECT_RATIOS]),
+            default_aspect=IMAGE_DEFAULT_ASPECT,
             api_base=client.base_url,
             api_healthy=healthy,
         )
+
+    @app.get("/api/image/size")
+    async def api_image_size(request: Request, resolution: str = "1024", aspect: str = ""):
+        """Effective canvas for the current form values (32-grid snapping)."""
+
+        require_user(request)
+        try:
+            value = int(str(resolution).strip())
+        except (TypeError, ValueError):
+            return JSONResponse(
+                {"ok": False, "error": "分辨率必须是整数"}, status_code=400
+            )
+        if value not in IMAGE_RESOLUTIONS:
+            allowed = " / ".join(str(item) for item in IMAGE_RESOLUTIONS)
+            return JSONResponse(
+                {"ok": False, "error": f"分辨率只支持 {allowed}，收到的是 {value}"},
+                status_code=400,
+            )
+        try:
+            preview = preview_image_size(value, aspect)
+        except ImageValidationError as exc:
+            return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+        return JSONResponse({"ok": True, **preview})
 
     @app.post("/api/image/generate")
     async def api_image_generate(
@@ -547,6 +578,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         prompt: str = Form(""),
         resolution: str = Form(""),
         seed: str = Form(""),
+        aspect: str = Form(""),
         csrf_token: str = Form(""),
         file: UploadFile | None = File(None),
     ):
@@ -559,6 +591,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             clean_prompt, clean_resolution, clean_seed = validate_image_request(
                 prompt, resolution, seed
             )
+            snapped = snap_resolution(clean_resolution)
+            size = resolve_image_size(aspect, snapped)
             upload: tuple[str, bytes] | None = None
             if file is not None:
                 data = await file.read()
@@ -568,9 +602,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             result = await run_in_threadpool(
                 request.app.state.image_client.generate,
                 clean_prompt,
-                clean_resolution,
+                snapped,
                 seed=clean_seed,
                 upload=upload,
+                width=size[0] if size else None,
+                height=size[1] if size else None,
             )
         except ImageValidationError as exc:
             return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)

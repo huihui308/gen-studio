@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import base64
 import json
+import math
 import uuid
 from dataclasses import dataclass
 from typing import Any
@@ -28,8 +29,31 @@ from urllib.request import Request, urlopen
 
 #: Image sizes offered by this page.  The service accepts a 64-2048 pixel
 #: budget on a 32-pixel grid; these presets are the ones measured on this box.
-RESOLUTIONS: tuple[int, ...] = (768, 1024, 1328, 1536, 2048)
+#: Pixel budgets offered by the page.  1080 (and 720) are the familiar video
+#: tiers; they are snapped to the service's 32-pixel grid (1080 -> 1088) and the
+#: page shows the effective output size so the mapping is visible.
+RESOLUTIONS: tuple[int, ...] = (720, 768, 1024, 1080, 1328, 1536, 2048)
 DEFAULT_RESOLUTION = 1024
+
+#: Aspect ratios offered by the page.  The service takes a total pixel budget
+#: (``resolution``) plus an optional explicit ``width``/``height`` pair, so the
+#: console resolves the ratio into that pair and keeps the service contract.
+ASPECT_RATIOS: dict[str, tuple[int, int]] = {
+    "1:1": (1, 1),
+    "4:3": (4, 3),
+    "3:2": (3, 2),
+    "16:9": (16, 9),
+    "21:9": (21, 9),
+    "3:4": (3, 4),
+    "2:3": (2, 3),
+    "9:16": (9, 16),
+}
+#: Empty string / "auto" keeps the service default: square without reference
+#: images, follow the reference image when one is uploaded.
+DEFAULT_ASPECT = ""
+SIZE_STEP = 32
+MIN_DIM = 64
+MAX_DIM = 2048
 
 #: The Turbo checkpoint runs at cfg=1, so a negative prompt would be ignored;
 #: it is deliberately not exposed.
@@ -99,6 +123,72 @@ def validate_request(
     if clean_seed < 0 or clean_seed > 2**63 - 1:
         raise ImageValidationError("随机种子超出范围：0 到 2^63-1")
     return clean_prompt, clean_resolution, clean_seed
+
+
+def snap_resolution(resolution: int) -> int:
+    """Snap a preset to the service grid (multiples of 32, 64..2048).
+
+    ``1080`` is a familiar video tier but not a multiple of 32, so the service
+    would reject it; the page sends the nearest grid value (1088) and shows the
+    effective size instead of silently pretending it is exactly 1080.
+    """
+
+    snapped = int(round(resolution / SIZE_STEP)) * SIZE_STEP
+    return max(MIN_DIM, min(MAX_DIM, snapped))
+
+
+def preview_size(resolution: int, aspect: str | None) -> dict[str, object]:
+    """Describe the canvas a submission would produce (used by the page)."""
+
+    snapped = snap_resolution(resolution)
+    size = resolve_size(aspect, snapped)
+    if size is None:
+        return {
+            "resolution": snapped,
+            "aspect": (aspect or "").strip() or "auto",
+            "auto": True,
+            "width": snapped,
+            "height": snapped,
+        }
+    width, height = size
+    return {
+        "resolution": snapped,
+        "aspect": aspect,
+        "auto": False,
+        "width": width,
+        "height": height,
+    }
+
+
+def resolve_size(aspect: str | None, resolution: int) -> tuple[int, int] | None:
+    """Turn an aspect ratio into a width/height pair on the 32-pixel grid.
+
+    ``None`` means "auto": send no size, so the service keeps its default
+    behaviour (square without references, follow the reference image otherwise).
+    The pair keeps the total area close to ``resolution ** 2`` and is capped at
+    ``MAX_DIM`` on the long edge, which can shrink the area for wide ratios.
+    """
+
+    key = (aspect or "").strip()
+    if not key or key.lower() == "auto":
+        return None
+    if key not in ASPECT_RATIOS:
+        allowed = " / ".join(["auto", *ASPECT_RATIOS])
+        raise ImageValidationError(f"宽高比只支持 {allowed}，收到的是 {key}")
+
+    aw, ah = ASPECT_RATIOS[key]
+
+    def _round(value: float) -> int:
+        return max(MIN_DIM, int(round(value / SIZE_STEP)) * SIZE_STEP)
+
+    width = _round(math.sqrt(resolution * resolution * aw / ah))
+    height = _round(width * ah / aw)
+    longest = max(width, height)
+    if longest > MAX_DIM:
+        scale = MAX_DIM / longest
+        width = _round(width * scale)
+        height = _round(height * scale)
+    return width, height
 
 
 def sniff_image(data: bytes) -> str | None:
@@ -210,12 +300,19 @@ class ImageClient:
         *,
         seed: int | None = None,
         upload: tuple[str, bytes] | None = None,
+        width: int | None = None,
+        height: int | None = None,
     ) -> dict[str, Any]:
         """Submit one generation; returns ``{"image": …, "elapsed_s": …}``."""
 
         fields = {"prompt": prompt, "resolution": str(resolution), "return_b64": "true"}
         if seed is not None:
             fields["seed"] = str(seed)
+        if width is not None and height is not None:
+            # Explicit canvas size; overrides the service's default square /
+            # follow-the-reference behaviour (its documented custom_size path).
+            fields["width"] = str(width)
+            fields["height"] = str(height)
 
         if upload is not None:
             body, content_type = _multipart_body(fields, upload)

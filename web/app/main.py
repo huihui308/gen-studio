@@ -134,7 +134,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     settings.ensure_dirs()
 
     users = UserStore(settings.auth_file)
-    sessions = SessionStore(settings.session_ttl_seconds)
+    sessions = SessionStore(settings.session_ttl_seconds, settings.sessions_file)
     gpu_probe = GpuProbe(settings.nvidia_smi)
     manager = ModelManager(settings, gpu_probe)
     collector = StatusCollector(settings, gpu_probe, manager)

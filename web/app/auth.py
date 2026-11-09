@@ -192,17 +192,82 @@ class Session:
 
 
 class SessionStore:
-    """In-memory server-side session store.
+    """Server-side session store, optionally persisted to a JSON file.
 
-    Sessions intentionally do not survive a console restart; that keeps
-    revocation trivial and avoids persisting bearer tokens on disk.
+    The console restarts often (code changes, systemd restarts) and a purely
+    in-memory store signs the operator out every time, which looks like "the
+    refresh logged me out".  When a ``path`` is given the sessions survive a
+    restart; the file holds bearer tokens, so it is written atomically with
+    0600 permissions, mirroring the credential file.
     """
 
-    def __init__(self, ttl_seconds: int) -> None:
+    def __init__(self, ttl_seconds: int, path: Path | None = None) -> None:
         self.ttl_seconds = ttl_seconds
+        self.path = Path(path) if path is not None else None
         self._lock = threading.RLock()
         self._sessions: dict[str, Session] = {}
+        self._load()
 
+    # ------------------------------------------------------------ persistence
+    def _load(self) -> None:
+        if self.path is None or not self.path.exists():
+            return
+        try:
+            raw = json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            # A corrupt file must not block login: start empty and overwrite.
+            return
+        items = raw if isinstance(raw, list) else []
+        now = time.time()
+        sessions: dict[str, Session] = {}
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            token = item.get("token")
+            username = item.get("username")
+            csrf = item.get("csrf_token")
+            created = item.get("created_at")
+            if not (isinstance(token, str) and isinstance(username, str)
+                    and isinstance(csrf, str)):
+                continue
+            try:
+                created_at = float(created)
+            except (TypeError, ValueError):
+                continue
+            session = Session(token=token, username=username,
+                              csrf_token=csrf, created_at=created_at)
+            if session.is_expired(self.ttl_seconds, now):
+                continue
+            sessions[token] = session
+        self._sessions = sessions
+        if len(sessions) != len(items):
+            self._write()
+
+    def _write(self) -> None:
+        if self.path is None:
+            return
+        payload = [
+            {
+                "token": session.token,
+                "username": session.username,
+                "csrf_token": session.csrf_token,
+                "created_at": session.created_at,
+            }
+            for session in self._sessions.values()
+        ]
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = self.path.with_name(self.path.name + ".tmp")
+            fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump(payload, handle)
+            os.replace(temporary, self.path)
+            os.chmod(self.path, 0o600)
+        except OSError:
+            # Persistence is best effort; a failed write must not break auth.
+            pass
+
+    # ------------------------------------------------------------------ ops
     def create(self, username: str) -> Session:
         session = Session(
             token=secrets.token_urlsafe(32),
@@ -211,6 +276,7 @@ class SessionStore:
         )
         with self._lock:
             self._sessions[session.token] = session
+            self._write()
         return session
 
     def get(self, token: str | None) -> Session | None:
@@ -222,6 +288,7 @@ class SessionStore:
                 return None
             if session.is_expired(self.ttl_seconds):
                 self._sessions.pop(token, None)
+                self._write()
                 return None
             return session
 
@@ -229,7 +296,8 @@ class SessionStore:
         if not token:
             return
         with self._lock:
-            self._sessions.pop(token, None)
+            if self._sessions.pop(token, None) is not None:
+                self._write()
 
     def revoke_others(self, username: str, keep_token: str) -> int:
         """Invalidate every session of ``username`` except ``keep_token``."""
@@ -239,4 +307,6 @@ class SessionStore:
                 if session.username == username and token != keep_token:
                     self._sessions.pop(token, None)
                     removed += 1
+            if removed:
+                self._write()
         return removed

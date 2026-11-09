@@ -254,6 +254,7 @@ web/
 - `web/data/settings.json` — 可选的控制台监听地址配置（部署时手工创建/修改）。
 - `web/data/model_access.json` — 每个模型独立的访问地址（0600；默认均为 `127.0.0.1`）。
 - `web/data/auth.json` — 单用户凭据（0600，仅哈希）。
+- `web/data/sessions.json` — 已登录会话（0600：token、用户名、CSRF token、创建时间），控制台重启后仍有效。
 - `web/data/state.json` — 本系统启动的模型记录（0600，含 systemd 单元名，用于控制台重启后核对归属）。
 - `web/data/logs/<model>.log` — 由控制台启动的模型 stdout/stderr。
 - `web/data/generated/<job_id>.mp4` — 视频生成成功后下载的 MP4（目录 0700、文件 0600；没有历史索引）。

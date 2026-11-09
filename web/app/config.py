@@ -55,6 +55,11 @@ class Settings:
         return self.data_dir / "state.json"
 
     @property
+    def sessions_file(self) -> Path:
+        """Persisted server-side sessions (0600); survives console restarts."""
+        return self.data_dir / "sessions.json"
+
+    @property
     def log_dir(self) -> Path:
         return self.data_dir / "logs"
 

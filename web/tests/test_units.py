@@ -59,6 +59,9 @@ class FakeUnits:
 def manager(settings, monkeypatch):
     monkeypatch.setattr("app.manager.proc.port_open", lambda port, **kwargs: False)
     monkeypatch.setattr("app.manager.proc.listener_pid", lambda port: None)
+    # Never match the host's real ComfyUI / SGLang processes: this workstation
+    # normally runs the Qwen-Image service on port 30020 while tests execute.
+    monkeypatch.setattr("app.manager.proc.find_processes_by_markers", lambda markers: [])
     fake = FakeUnits()
     manager = ModelManager(settings, FakeProbe(), unit_controller=fake)
     return manager, fake, settings

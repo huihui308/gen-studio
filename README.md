@@ -208,7 +208,7 @@ All sizes fit; peak VRAM stays pinned at ~11.7/12 GiB because ComfyUI streams qu
 
 ## web console
 
-`web/` is a FastAPI + Jinja2 console (no frontend build step) bound to `127.0.0.1:8090` by default. Its original scope is five operational requirements; a sixth page for H3 video generation was added later:
+`web/` is a FastAPI + Jinja2 console (no frontend build step) bound to `127.0.0.1:8090` by default. Its original scope is five operational requirements; two generation pages (H3 video, Qwen-Image pictures) were added later:
 
 1. **Login** — username/password only; default `admin / admin`, PBKDF2 hashes on disk, server-side sessions; every functional page redirects to `/login` when unauthenticated.
 2. **Password settings** — `/password` changes the password (current password + policy + CSRF) and revokes other sessions.
@@ -216,6 +216,7 @@ All sizes fit; peak VRAM stays pinned at ~11.7/12 GiB because ComfyUI streams qu
 4. **Run status** — reads `/proc`, `nvidia-smi`, and each model's own HTTP API; unavailable metrics are labelled unavailable with a reason (e.g. SGLang exposes no queue endpoint).
 5. **Business-style UI** — navy/gold console styling, white cards, status pills, responsive layout.
 6. **H3 video generation (later extension)** — `/generate` submits a text prompt to the local H3 `/v1/videos` API, polls the job, shows progress, then plays the downloaded MP4 and echoes the prompt and parameters. Defaults: 480 short edge, 10 seconds, fixed 16:9; duration is 4–15 seconds. Jobs live in console memory and there is no gallery or history list.
+7. **Image generation (later extension)** — `/image` takes an optional reference image (multipart upload, png/jpg/webp/gif ≤20 MB) plus a prompt, a resolution preset and an optional seed, and proxies the call server-side to the local Qwen-Image service (`GEN_STUDIO_IMAGE_API_BASE`, default `http://127.0.0.1:30021`); proxying keeps the browser same-origin and inside the CSP. The page shows elapsed time plus an indeterminate bar (the service exposes no progress endpoint), previews the returned base64 image, and downloads it under the service-provided filename.
 
 Each model runs in its own transient systemd user unit (`gen-studio-minimax-h3`, `gen-studio-qwen-image2.0`). Restarting the console therefore does not stop or reload a running model; the console reconnects to the existing unit after a restart.
 

@@ -16,7 +16,8 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
-from fastapi import FastAPI, Form, Request
+from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
@@ -48,6 +49,16 @@ from .generation import (
     GenerationError,
     GenerationManager,
     GenerationValidationError,
+)
+from .imagegen import (
+    DEFAULT_RESOLUTION as IMAGE_DEFAULT_RESOLUTION,
+    RESOLUTIONS as IMAGE_RESOLUTIONS,
+    ImageClient,
+    ImageError,
+    ImageServiceError,
+    ImageValidationError,
+    validate_request as validate_image_request,
+    validate_upload,
 )
 from .gpu import GpuProbe
 from .manager import ControlError, ModelManager
@@ -124,6 +135,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     collector = StatusCollector(settings, gpu_probe, manager)
     model_access_store = ModelAccessStore(settings.data_dir / "model_access.json")
     generation_manager = GenerationManager(settings)
+    image_client = ImageClient(
+        os.environ.get("GEN_STUDIO_IMAGE_API_BASE", "http://127.0.0.1:30021")
+    )
 
     app = FastAPI(
         title=f"{APP_NAME} 控制台",
@@ -139,6 +153,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.collector = collector
     app.state.model_access_store = model_access_store
     app.state.generation_manager = generation_manager
+    app.state.image_client = image_client
 
     templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
     templates.env.filters["gib"] = lambda mb: f"{mb / 1024:.1f}" if mb is not None else "—"
@@ -509,6 +524,63 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 {"error": "生成任务不存在或已过期"}, status_code=404
             )
         return JSONResponse({"job": job})
+
+    @app.get("/image", response_class=HTMLResponse)
+    async def image_page(request: Request):
+        session = require_user(request)
+        client = request.app.state.image_client
+        healthy = await run_in_threadpool(client.healthy)
+        return render(
+            request,
+            "image.html",
+            session=session,
+            active="image",
+            resolutions=IMAGE_RESOLUTIONS,
+            default_resolution=IMAGE_DEFAULT_RESOLUTION,
+            api_base=client.base_url,
+            api_healthy=healthy,
+        )
+
+    @app.post("/api/image/generate")
+    async def api_image_generate(
+        request: Request,
+        prompt: str = Form(""),
+        resolution: str = Form(""),
+        seed: str = Form(""),
+        csrf_token: str = Form(""),
+        file: UploadFile | None = File(None),
+    ):
+        session = require_user(request)
+        if not csrf_ok(session, csrf_token):
+            return JSONResponse(
+                {"ok": False, "error": "会话校验失败，请刷新页面后重试"}, status_code=403
+            )
+        try:
+            clean_prompt, clean_resolution, clean_seed = validate_image_request(
+                prompt, resolution, seed
+            )
+            upload: tuple[str, bytes] | None = None
+            if file is not None:
+                data = await file.read()
+                upload = (validate_upload(file.filename, file.content_type, data), data)
+            # The upstream call blocks for tens of seconds: keep it off the
+            # event loop so the rest of the console stays responsive.
+            result = await run_in_threadpool(
+                request.app.state.image_client.generate,
+                clean_prompt,
+                clean_resolution,
+                seed=clean_seed,
+                upload=upload,
+            )
+        except ImageValidationError as exc:
+            return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+        except ImageServiceError as exc:
+            return JSONResponse({"ok": False, "error": str(exc)}, status_code=exc.status_code)
+        except ImageError as exc:
+            return JSONResponse({"ok": False, "error": str(exc)}, status_code=502)
+        payload = {"ok": True}
+        payload.update(result)
+        return JSONResponse(payload)
 
     @app.get("/status", response_class=HTMLResponse)
     async def status_page(request: Request):

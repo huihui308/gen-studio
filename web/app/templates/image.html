@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}图像生成{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Qwen-Image 2.1 Turbo</p>
+    <h1>图像生成</h1>
+    <p class="lede">上传参考图（可选）并输入提示词，调用本机 Qwen-Image 服务生图。参考图按顺序以 <code>&lt;image1&gt;</code> 在提示词中引用；不传参考图时走纯文生图。生成完成后可直接预览并下载。</p>
+  </div>
+</section>
+
+{% if not api_healthy %}
+<div class="alert alert-warn" role="status">
+  <strong>生图服务当前不可达：</strong>
+  {{ api_base }} 没有响应，提交会失败。请先启动服务（<code>cd qwen-image &amp;&amp; ./serve_api.sh start</code>），或在下方重新提交前刷新本页。
+</div>
+{% endif %}
+
+<div class="generate-layout">
+  <section class="card generate-card" aria-labelledby="image-form-title">
+    <header class="card-head">
+      <div>
+        <p class="eyebrow">生成参数</p>
+        <h2 id="image-form-title">提示词与参考图</h2>
+      </div>
+    </header>
+
+    <form id="image-form" action="/api/image/generate" method="post" class="generate-form" novalidate>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+      <div class="field">
+        <label class="field-label" for="prompt">提示词 <span class="req">必填</span></label>
+        <textarea class="input textarea" id="prompt" name="prompt" rows="7" maxlength="20000"
+                  placeholder="例如：把 <image1> 重绘成水彩绘本画风，柔和的蓝紫色调，保持构图与主体不变。"
+                  required></textarea>
+        <div class="field-foot">
+          <span>有参考图时用 <code>&lt;image1&gt;</code> 指代它；没有参考图时描述画面本身即可。</span>
+          <span id="prompt-count" class="mono">0 / 20000</span>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="reference">参考图 <span class="hint-inline">可选</span></label>
+        <input class="input file-input" type="file" id="reference" name="file"
+               accept="image/png,image/jpeg,image/webp,image/gif">
+        <div class="file-foot">
+          <span class="hint">png / jpg / webp / gif，单张不超过 20 MB；上传后这里会显示缩略图。</span>
+          <button class="btn btn-ghost btn-sm" type="button" id="clear-reference" hidden>移除参考图</button>
+        </div>
+        <div class="thumb-wrap" id="thumb-wrap" hidden>
+          <img id="thumb" alt="参考图预览">
+        </div>
+      </div>
+
+      <div class="param-grid">
+        <div class="field">
+          <label class="field-label" for="resolution">分辨率</label>
+          <select class="select" id="resolution" name="resolution">
+            {% for value in resolutions %}
+            <option value="{{ value }}"{% if value == default_resolution %} selected{% endif %}>
+              {{ value }}{% if value == 1024 %} · 默认{% endif %}
+            </option>
+            {% endfor %}
+          </select>
+          <p class="hint">传给服务的 <code>resolution</code>：参考图的面积预算（有参考图时输出画布跟随参考图；无参考图时输出该边长的方图）。</p>
+        </div>
+
+        <div class="field">
+          <label class="field-label" for="seed">随机种子</label>
+          <input class="input" type="number" id="seed" name="seed" min="0" max="9223372036854775807"
+                 step="1" placeholder="留空 = 每次随机">
+          <p class="hint">固定种子可复现同一张图；留空由服务随机生成。</p>
+        </div>
+      </div>
+
+      <div class="generate-note">
+        生图是同步请求：单张通常几十秒，页面会显示已用时间；服务不提供百分比进度，所以进度条是不确定状态。
+        本次请求发往 <code>{{ api_base }}</code>（由 <code>GEN_STUDIO_IMAGE_API_BASE</code> 配置）。
+      </div>
+
+      <div class="form-error" id="image-error" role="alert" hidden></div>
+
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit" id="image-submit">生成图片</button>
+        <span class="hint" id="image-hint">生成期间按钮会禁用，请保持页面打开。</span>
+      </div>
+    </form>
+  </section>
+
+  <section class="card result-card" aria-labelledby="result-title" aria-live="polite">
+    <header class="card-head">
+      <div>
+        <p class="eyebrow">生成结果</p>
+        <h2 id="result-title">输出</h2>
+      </div>
+      <span class="pill pill-neutral" id="job-pill">未开始</span>
+    </header>
+
+    <div class="result-empty" id="image-idle">
+      <p>提交提示词后，这里会显示生成进度、图片与本次实际使用的参数。</p>
+    </div>
+
+    <div id="image-progress" hidden>
+      <div class="progress-head">
+        <span id="job-stage">正在提交</span>
+        <span class="mono" id="job-percent">生成中</span>
+      </div>
+      <div class="progress is-indeterminate" role="progressbar" aria-valuemin="0" aria-valuemax="100"
+           aria-valuenow="0" id="progress-track">
+        <div class="progress-bar" id="progress-bar"></div>
+      </div>
+      <dl class="meta-grid result-meta">
+        <div><dt>已用时间</dt><dd class="mono" id="job-elapsed">0 秒</dd></div>
+        <div><dt>分辨率</dt><dd class="mono" id="job-resolution">—</dd></div>
+        <div><dt>参考图</dt><dd class="mono" id="job-reference">无</dd></div>
+      </dl>
+      <p class="hint">服务没有进度接口，这里只能显示已用时间；请求超时后页面会给出明确错误，不会静默失败。</p>
+    </div>
+
+    <div id="image-result" hidden>
+      <div class="image-wrap">
+        <img id="result-image" alt="生成结果">
+      </div>
+      <div class="result-actions">
+        <a class="btn btn-primary" id="download-image" href="#" download>下载图片</a>
+        <span class="hint" id="download-hint">文件名取自服务返回的 filename。</span>
+      </div>
+      <div class="result-block">
+        <h3>本次使用的提示词</h3>
+        <pre class="prompt-echo" id="result-prompt"></pre>
+      </div>
+      <dl class="meta-grid result-meta">
+        <div><dt>分辨率</dt><dd class="mono" id="result-resolution">—</dd></div>
+        <div><dt>实际尺寸</dt><dd class="mono" id="result-size">—</dd></div>
+        <div><dt>种子</dt><dd class="mono" id="result-seed">—</dd></div>
+        <div><dt>生成耗时</dt><dd class="mono" id="result-elapsed">—</dd></div>
+      </dl>
+      <p class="hint">图片以 base64 返回，本页不保存历史记录；产物已落在服务侧 output 目录。</p>
+    </div>
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/image.js" defer></script>{% endblock %}

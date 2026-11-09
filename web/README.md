@@ -2,18 +2,19 @@
 
 `web/` 是 `deploy-models` 仓库的可视化控制台：登录后启动 / 停止 **MiniMax H3** 与
 **Qwen-Image 2.0** 两个生成模型，指定运行显卡，并在状态页核对真实运行情况；
-另提供 H3 视频生成页，可直接提交提示词、查看进度并播放结果。技术栈为
+另提供 H3 视频生成页（提示词 → 视频，进度 + 播放）与图像生成页（参考图 + 提示词 → 生图 → 下载）。技术栈为
 FastAPI + Jinja2 服务端渲染 + 原生 CSS/JS，无前端构建步骤。控制台默认
 监听 `127.0.0.1:8090`；部署时可用 `GEN_STUDIO_HOST` 或 `web/data/settings.json` 改为 `0.0.0.0`
 （保存后需重启，见下文）。每个模型另有独立的**模型访问地址**（`127.0.0.1` /
 `0.0.0.0`），决定该模型进程自身监听在回环还是所有网卡；默认回环。
 
-> 前 5 项为最初约定的范围；视频生成页是后续按要求新增的页面，不改变前 5 项行为。
+> 前 5 项为最初约定的范围；视频 / 图像生成页是后续按要求新增的页面，不改变前 5 项行为。
 > 这里**没有**作品画廊、生成历史列表、用户注册、模型下载或公网暴露入口；控制台
 > 监听地址只影响控制台自身，模型访问地址只影响对应模型端口。默认二者都不对
 > 局域网暴露；只有显式把某个模型的访问地址设为 `0.0.0.0` 时，该模型端口
 > （H3 30010 / ComfyUI 30020）才会对可达网络开放，且模型 API 没有鉴权，仅限
-> 局域网使用。视频生成页只调用本机 H3，不代理 Qwen-Image。
+> 局域网使用。视频生成页只调用本机 H3；图像生成页经控制台同源代理调用本机 Qwen-Image
+生图服务（`http://127.0.0.1:30021`），浏览器不直连、不跨域。
 
 ## 快速开始
 
@@ -75,6 +76,7 @@ curl -s http://127.0.0.1:30010/health
 | 4 | 运行状态页 | `/status` 服务端渲染，`/status/partial` 每 5 秒刷新；数据源为 `/proc`、`nvidia-smi`、模型自身 HTTP API；每个指标都带 `available` / `source` / `note`，取不到的值显示「不可用」并写明原因；H3 / Qwen 两块状态以 Sheet 页签切换，一次只显示一个 | 打开「运行状态」：出现 `minimax-h3` / `qwen-image2.0` 两个页签，点击只显示对应模型；H3 显示健康检查、PID、GPU 占用、SGLang 运行期信息；其队列与生成耗时明确标注不可用；Qwen-Image 显示 ComfyUI 版本与真实队列 |
 | 5 | 商务风视觉 | `app/static/app.css`：深海军蓝 + 暗金点缀、白色卡片、细边框表格、状态药丸、登录页左右分栏；无外部字体/CDN，CSP 保持严格 | 直接观察登录页、模型控制页、运行状态页的排版与配色 |
 | 6 | H3 视频生成（后续扩展） | `/generate`：提示词多行输入；分辨率默认 480（短边，可选 736）、时长默认 10 秒（4–15 秒）、画幅固定 16:9；`POST /api/generate` 调用本机 H3 `/v1/videos`，后台线程轮询 `/v1/videos/{id}`，成功后下载 MP4 到 `web/data/generated/`；`GET /api/generate/{id}` 返回进度；`GET /api/generate/{id}/video` 返回需登录的视频流。H3 未运行时页面明确提示，失败保留输入 | 打开「视频生成」：默认 480 / 10 秒；输入提示词提交后看到排队/生成/下载进度；完成后播放视频并回显本次提示词与参数；空提示词、非法分辨率/时长、H3 未启动均有可见中文错误 |
+| 7 | 图像生成（后续扩展，2026-11-08） | `/image`：参考图可选上传（png/jpg/webp/gif，≤20 MB，前端缩略图）、提示词（≤20000 字符）、分辨率 768/1024/1328/1536/2048（默认 1024）、随机种子可选；`POST /api/image/generate`（CSRF + 登录）在服务端用 multipart 转发到 Qwen-Image `/generate`（无参考图时转发 JSON），同步等待结果（单张几十秒），返回 `images[0].b64` 供页面直出预览；下载按钮用 base64 生成 Blob 并以服务返回的 `filename` 命名 | 打开「图像生成」：上传参考图 + 提示词提交后看到已用时间与不确定进度条；完成后显示图片与参数回显，点击下载得到 PNG；不传参考图时纯文生图同样可用；空提示词、错误分辨率、非图片文件、服务不可达、超时均有可见中文错误 |
 
 ## 目录结构
 
@@ -89,6 +91,7 @@ web/
 │   ├── config.py            # Settings / 路径 / 默认账号
 │   ├── modelaccess.py       # 每个模型独立的访问地址（web/data/model_access.json）
 │   ├── generation.py        # H3 视频生成任务：校验、提交、轮询、下载
+│   ├── imagegen.py          # Qwen-Image 生图：校验、multipart 转发、base64 结果
 │   ├── auth.py              # PBKDF2 密码、用户库、会话与 CSRF
 │   ├── gpu.py               # nvidia-smi 探测（绝不回退默认显卡）
 │   ├── catalog.py           # 两个受支持模型的静态能力与启动配置
@@ -96,9 +99,9 @@ web/
 │   ├── units.py             # systemd --user unit 的启动、观察与停止
 │   ├── proc.py              # /proc、ss、端口、进程组工具
 │   ├── status.py            # 状态采集（如实标注不可用）
-│   ├── templates/           # base / login / control / generate / status / password
-│   └── static/              # app.css / generate.js / status.js / control.js / favicon.svg
-├── tests/                   # pytest：登录、改密、显卡必选、启停、状态、生成
+│   ├── templates/           # base / login / control / generate / image / status / password
+│   └── static/              # app.css / generate.js / image.js / status.js / control.js / favicon.svg
+├── tests/                   # pytest：登录、改密、显卡必选、启停、状态、视频生成、图像生成
 └── data/（运行时生成，不入库）  # auth.json / state.json / model_access.json / logs/ / generated/
 ```
 
@@ -190,6 +193,15 @@ web/
 - H3 本身没有鉴权；`/api/generate/*` 由控制台的登录会话保护，视频文件只通过
   鉴权端点提供，不挂静态目录。
 
+### 图像生成（2026-11-08）
+
+- 页面 `/image`（nav「图像生成」），登录保护；左表单：提示词、参考图（可选，前端即时缩略图 + 移除）、分辨率（768–2048，默认 1024）、随机种子（可选，留空即随机）。
+- `POST /api/image/generate`：CSRF → 校验 → 有参考图时拼 `multipart/form-data`（`prompt`、`resolution`、`return_b64=true`、`file=参考图`）转发到生图服务 `POST /generate`；无参考图时转发等价的 JSON。上游调用是**同步**的（单张几十秒），用 `run_in_threadpool` 跑，避免阻塞控制台事件循环。
+- 服务端把 `images[0]` 的 `filename` / `subfolder` / `width` / `height` / `b64` 回给页面；页面用 base64 直接渲染预览，下载按钮从同一份 base64 构造 Blob 并以 `filename` 命名，**不需要再访问上游 `/result`**。
+- 代理而不是直连的原因：生图服务与页面不同源（端口不同），且 CSP 的 `connect-src 'self'` 会拦下浏览器对 `:30021` 的 fetch；代理同时让服务地址集中在 `GEN_STUDIO_IMAGE_API_BASE` 一处配置。
+- 生图服务没有进度接口，所以进度条是不确定状态、只显示已用时间；上游超时（600 秒）映射为 504，不可达映射为 502，参数/上传问题映射为 400。
+- 参考图只接受 png / jpg / webp / gif（按 magic bytes 判定，不信声明），单张 ≤20 MB；提示词为空时不发请求。
+
 ### 运行状态（诚实呈现）
 
 - 每个字段为 `{label, value, available, source, note}`；`available=false` 时
@@ -230,6 +242,7 @@ web/
 | `GEN_STUDIO_MODEL_HOST` | `127.0.0.1` | 控制台启动模型时按模型配置注入；脚本内默认回环，通常不需要手动设置 |
 | `GEN_STUDIO_MODEL_UNITS` | `1` | `1` 用独立 transient systemd user unit 启动模型（重启控制台不杀模型）；`0` 回退旧子进程模式，仅用于开发/测试 |
 | `GEN_STUDIO_H3_BASE_URL` | `http://127.0.0.1:30010` | 视频生成页调用的 H3 API 地址；H3 按模型配置监听 `0.0.0.0` 时仍可用回环访问 |
+| `GEN_STUDIO_IMAGE_API_BASE` | `http://127.0.0.1:30021` | 图像生成页经控制台代理调用的 Qwen-Image 生图服务地址 |
 
 运行时文件：
 
@@ -245,7 +258,7 @@ web/
 ```bash
 cd web
 uv pip install -r requirements-dev.txt
-.venv/bin/python -m pytest        # 61 项，约 40 秒
+.venv/bin/python -m pytest        # 77 项，约 45 秒
 ```
 
 测试使用临时仓库 + 假启动脚本 + 假 `nvidia-smi`，不会触碰真实模型进程或

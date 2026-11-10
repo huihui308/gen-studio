@@ -32,6 +32,7 @@
   const lightbox = document.getElementById("lightbox");
   const lightboxImage = document.getElementById("lightbox-image");
   const lightboxClose = document.getElementById("lightbox-close");
+  const lightboxZoom = document.getElementById("lightbox-zoom");
   const downloadLink = document.getElementById("download-image");
   const downloadHint = document.getElementById("download-hint");
   const resultPrompt = document.getElementById("result-prompt");
@@ -45,6 +46,13 @@
   const CLIENT_TIMEOUT_MS = 11 * 60 * 1000;
   const ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
 
+  // Lightbox zoom: wheel zooms around the cursor, drag pans while zoomed.
+  const ZOOM_MIN = 1;
+  const ZOOM_MAX = 8;
+  const ZOOM_KEY_STEP = 1.25;
+  const ZOOM_WHEEL_SENSITIVITY = 0.0015;
+  const PAN_THRESHOLD = 4;
+
   let downloadUrl = null;
   let thumbReadToken = 0;
   let lightboxOpen = false;
@@ -52,6 +60,16 @@
   let elapsedTimer = null;
   let elapsedStart = 0;
   let submitting = false;
+  let zoomScale = 1;
+  let zoomX = 0;
+  let zoomY = 0;
+  let panning = false;
+  let panPointerId = null;
+  let panStartX = 0;
+  let panStartY = 0;
+  let panStartOffsetX = 0;
+  let panStartOffsetY = 0;
+  let panMoved = false;
 
   function showError(message) {
     errorBox.textContent = message;
@@ -234,6 +252,145 @@
     resultElapsed.textContent = formatSeconds(data.elapsed_s);
   }
 
+  function clampNumber(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+  }
+
+  function clampPan() {
+    if (zoomScale <= ZOOM_MIN) {
+      zoomX = 0;
+      zoomY = 0;
+      return;
+    }
+    // The image stays centered by flexbox; the transform scales it around the
+    // viewport center, so the pannable range is half the overflow per axis.
+    const maxX = Math.max(0, (lightboxImage.offsetWidth * zoomScale - window.innerWidth) / 2);
+    const maxY = Math.max(0, (lightboxImage.offsetHeight * zoomScale - window.innerHeight) / 2);
+    zoomX = clampNumber(zoomX, -maxX, maxX);
+    zoomY = clampNumber(zoomY, -maxY, maxY);
+  }
+
+  function applyZoom() {
+    lightboxImage.style.transform =
+      "translate3d(" + zoomX.toFixed(2) + "px, " + zoomY.toFixed(2) + "px, 0) scale(" +
+      zoomScale.toFixed(3) + ")";
+    lightbox.classList.toggle("is-zoomed", zoomScale > ZOOM_MIN);
+    if (lightboxZoom) {
+      const percent = Math.round(zoomScale * 100);
+      lightboxZoom.textContent = percent + "%";
+      lightboxZoom.disabled = zoomScale <= ZOOM_MIN;
+      lightboxZoom.title = zoomScale > ZOOM_MIN
+        ? "当前缩放 " + percent + "%，点击复位到 100%"
+        : "当前缩放 100%";
+    }
+  }
+
+  function resetZoom() {
+    zoomScale = ZOOM_MIN;
+    zoomX = 0;
+    zoomY = 0;
+    applyZoom();
+  }
+
+  function zoomTo(nextScale, anchorX, anchorY) {
+    const scale = clampNumber(nextScale, ZOOM_MIN, ZOOM_MAX);
+    if (scale === zoomScale) return;
+    // Keep the point under the cursor fixed while the image grows or shrinks.
+    const centerX = window.innerWidth / 2;
+    const centerY = window.innerHeight / 2;
+    const ax = typeof anchorX === "number" ? anchorX : centerX;
+    const ay = typeof anchorY === "number" ? anchorY : centerY;
+    const offsetX = (ax - centerX - zoomX) / zoomScale;
+    const offsetY = (ay - centerY - zoomY) / zoomScale;
+    zoomScale = scale;
+    zoomX = ax - centerX - scale * offsetX;
+    zoomY = ay - centerY - scale * offsetY;
+    clampPan();
+    applyZoom();
+  }
+
+  function onLightboxWheel(event) {
+    if (!lightboxOpen) return;
+    // Block page scrolling even when the zoom is already clamped.
+    event.preventDefault();
+    let delta = event.deltaY;
+    if (!delta) return;
+    if (event.deltaMode === 1) delta *= 16;
+    else if (event.deltaMode === 2) delta *= window.innerHeight;
+    const factor = Math.exp(-delta * ZOOM_WHEEL_SENSITIVITY);
+    zoomTo(zoomScale * factor, event.clientX, event.clientY);
+  }
+
+  function onLightboxPointerDown(event) {
+    if (!lightboxOpen) return;
+    // Every fresh press starts a new interaction: never let a stale drag flag
+    // swallow the following click (e.g. drag -> wheel back to 100% -> click).
+    panMoved = false;
+    if (zoomScale <= ZOOM_MIN) return;
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    panning = true;
+    panMoved = false;
+    panPointerId = event.pointerId;
+    panStartX = event.clientX;
+    panStartY = event.clientY;
+    panStartOffsetX = zoomX;
+    panStartOffsetY = zoomY;
+    if (lightboxImage.setPointerCapture) {
+      try {
+        lightboxImage.setPointerCapture(event.pointerId);
+      } catch (error) {
+        // Pointer capture is best effort; dragging still works without it.
+      }
+    }
+    lightbox.classList.add("is-dragging");
+    event.preventDefault();
+  }
+
+  function onLightboxPointerMove(event) {
+    if (!panning || event.pointerId !== panPointerId) return;
+    const dx = event.clientX - panStartX;
+    const dy = event.clientY - panStartY;
+    if (Math.abs(dx) + Math.abs(dy) > PAN_THRESHOLD) panMoved = true;
+    zoomX = panStartOffsetX + dx;
+    zoomY = panStartOffsetY + dy;
+    clampPan();
+    applyZoom();
+    event.preventDefault();
+  }
+
+  function onLightboxPointerEnd(event) {
+    if (!panning || (event && event.pointerId !== panPointerId)) return;
+    panning = false;
+    lightbox.classList.remove("is-dragging");
+    if (event && lightboxImage.releasePointerCapture) {
+      try {
+        lightboxImage.releasePointerCapture(event.pointerId);
+      } catch (error) {
+        // Already released.
+      }
+    }
+    panPointerId = null;
+  }
+
+  function onLightboxImageClick() {
+    if (panMoved) {
+      // This click is the tail of a drag: never treat it as "close".
+      panMoved = false;
+      return;
+    }
+    if (zoomScale > ZOOM_MIN) {
+      // Do not close while zoomed in; a stray click during inspection would
+      // throw the zoom state away. Reset with wheel / double click / percent.
+      return;
+    }
+    closeLightbox();
+  }
+
+  function onLightboxImageDoubleClick(event) {
+    event.preventDefault();
+    if (zoomScale > ZOOM_MIN) resetZoom();
+  }
+
   function openLightbox() {
     const src = resultImage.getAttribute("src");
     if (!src || lightboxOpen) return;
@@ -241,6 +398,7 @@
     lightbox.hidden = false;
     lightboxOpen = true;
     document.body.classList.add("lightbox-open");
+    resetZoom();
     lastFocused = document.activeElement;
     lightboxClose.focus();
   }
@@ -251,6 +409,7 @@
     lightboxImage.removeAttribute("src");
     lightboxOpen = false;
     document.body.classList.remove("lightbox-open");
+    resetZoom();
     if (lastFocused && typeof lastFocused.focus === "function") lastFocused.focus();
     lastFocused = null;
   }
@@ -371,14 +530,53 @@
     }
   });
   lightboxClose.addEventListener("click", closeLightbox);
-  lightboxImage.addEventListener("click", closeLightbox);
+  if (lightboxZoom) {
+    lightboxZoom.addEventListener("click", function (event) {
+      event.stopPropagation();
+      resetZoom();
+    });
+  }
+  // wheel must not be passive: zooming replaces the browser's page scroll.
+  lightbox.addEventListener("wheel", onLightboxWheel, { passive: false });
+  lightboxImage.addEventListener("pointerdown", onLightboxPointerDown);
+  lightboxImage.addEventListener("pointermove", onLightboxPointerMove);
+  lightboxImage.addEventListener("pointerup", onLightboxPointerEnd);
+  lightboxImage.addEventListener("pointercancel", onLightboxPointerEnd);
+  lightboxImage.addEventListener("click", onLightboxImageClick);
+  lightboxImage.addEventListener("dblclick", onLightboxImageDoubleClick);
+  lightboxImage.addEventListener("load", function () {
+    if (!lightboxOpen) return;
+    clampPan();
+    applyZoom();
+  });
   lightbox.addEventListener("click", function (event) {
     if (event.target === lightbox) closeLightbox();
   });
+  window.addEventListener("resize", function () {
+    if (!lightboxOpen) return;
+    clampPan();
+    applyZoom();
+  });
   document.addEventListener("keydown", function (event) {
-    if (event.key === "Escape" && lightboxOpen) {
+    if (!lightboxOpen) return;
+    if (event.key === "Escape") {
       event.preventDefault();
       closeLightbox();
+      return;
+    }
+    if (event.key === "+" || event.key === "=") {
+      event.preventDefault();
+      zoomTo(zoomScale * ZOOM_KEY_STEP);
+      return;
+    }
+    if (event.key === "-" || event.key === "_") {
+      event.preventDefault();
+      zoomTo(zoomScale / ZOOM_KEY_STEP);
+      return;
+    }
+    if (event.key === "0") {
+      event.preventDefault();
+      resetZoom();
     }
   });
   resultImage.addEventListener("error", function () {

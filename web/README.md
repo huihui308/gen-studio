@@ -202,7 +202,7 @@ web/
 - `POST /api/image/generate`：CSRF → 校验 → 有参考图时拼 `multipart/form-data`（`prompt`、`resolution`、`return_b64=true`、`file=参考图`）转发到生图服务 `POST /generate`；无参考图时转发等价的 JSON。上游调用是**同步**的（单张几十秒），用 `run_in_threadpool` 跑，避免阻塞控制台事件循环。
 - 服务端把 `images[0]` 的 `filename` / `subfolder` / `width` / `height` / `b64` 回给页面；页面用 base64 直接渲染预览，下载按钮从同一份 base64 构造 Blob 并以 `filename` 命名，**不需要再访问上游 `/result`**。
 - 代理而不是直连的原因：生图服务与页面不同源（端口不同），且 CSP 的 `connect-src 'self'` 会拦下浏览器对 `:30021` 的 fetch；代理同时让服务地址集中在 `GEN_STUDIO_IMAGE_API_BASE` 一处配置。
-- 结果图可点击放大（全屏 lightbox，Esc / 点空白 / 点图关闭，也支持 Enter/Space 键盘打开）；放大同样用 `data:` URL，不额外请求服务。
+- 结果图可点击放大（全屏 lightbox，Esc / 点空白关闭，也支持 Enter/Space 键盘打开）。预览内**鼠标滚轮以光标为中心缩放 100%–800%**，放大后按住拖拽平移，左上角百分比按钮 / 双击图片 / 数字键 `0` 复位，`+` / `-` 也可缩放；100% 时点图关闭，放大状态下点图不关闭以免误触。放大同样用 `data:` URL，不额外请求服务。
 - 预览与参考图缩略图都走**同源 `data:` URL**（页面的 CSP 为 `img-src 'self' data: blob:`）；`blob:` 只用于 `<a download>`。早期预览直接用了 `blob:` URL，被 CSP 拦下导致破图，现已修正并有回归测试。
 - 生图服务没有进度接口，所以进度条是不确定状态、只显示已用时间；上游超时（600 秒）映射为 504，不可达映射为 502，参数/上传问题映射为 400。
 - 参考图只接受 png / jpg / webp / gif（按 magic bytes 判定，不信声明），单张 ≤20 MB；提示词为空时不发请求。

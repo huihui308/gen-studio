@@ -134,7 +134,7 @@
         <img id="result-image" alt="生成结果" role="button" tabindex="0"
              aria-label="生成结果，点击放大预览">
       </div>
-      <p class="hint image-zoom-hint">点击图片可放大预览；Esc 或点击空白处关闭。</p>
+      <p class="hint image-zoom-hint">点击图片可放大预览：滚轮缩放（以光标为中心）、放大后拖拽平移、双击复位；Esc 或点击空白处关闭。</p>
       <div class="result-actions">
         <a class="btn btn-primary" id="download-image" href="#" download>下载图片</a>
         <span class="hint" id="download-hint">文件名取自服务返回的 filename。</span>
@@ -155,9 +155,13 @@
   </section>
 </div>
 
-<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="生成结果放大预览" hidden>
+<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="生成结果放大预览"
+     aria-describedby="lightbox-hint" hidden>
+  <button class="lightbox-zoom mono" type="button" id="lightbox-zoom" title="当前缩放 100%"
+          aria-label="当前缩放比例，点击复位" disabled>100%</button>
   <button class="lightbox-close" type="button" id="lightbox-close" aria-label="关闭预览">×</button>
-  <img class="lightbox-image" id="lightbox-image" alt="生成结果放大预览">
+  <img class="lightbox-image" id="lightbox-image" alt="生成结果放大预览" draggable="false">
+  <p class="lightbox-hint" id="lightbox-hint">滚轮缩放 · 放大后拖拽平移 · 双击或点百分比复位 · Esc / 点击空白处关闭</p>
 </div>
 {% endblock %}
 {% block scripts %}<script src="/static/image.js" defer></script>{% endblock %}

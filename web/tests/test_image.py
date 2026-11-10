@@ -139,6 +139,30 @@ def test_result_image_supports_click_to_zoom(image_client):
     assert 'id="lightbox-image"' in page
     assert 'id="lightbox-close"' in page
     assert 'aria-label="生成结果，点击放大预览"' in page
+    assert 'id="lightbox-zoom"' in page
+    assert 'id="lightbox-hint"' in page
+    assert "滚轮缩放" in page
+
+
+def test_lightbox_wheel_zoom_assets(image_client):
+    """Wheel zoom and drag pan are wired in the shipped JS and styled in CSS."""
+
+    app, fake = image_client
+    client = _client_with(app)
+    login(client)
+    assert client.get("/image").status_code == 200
+
+    script = client.get("/static/image.js")
+    assert script.status_code == 200
+    assert '"wheel", onLightboxWheel, { passive: false }' in script.text
+    assert "pointerdown" in script.text
+    assert "ZOOM_MAX" in script.text
+    assert "clampPan" in script.text
+
+    css = client.get("/static/app.css")
+    assert css.status_code == 200
+    assert ".lightbox.is-zoomed" in css.text
+    assert "cursor: zoom-in" in css.text
 
 
 # ------------------------------------------------------------ validation

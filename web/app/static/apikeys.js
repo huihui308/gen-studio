@@ -76,6 +76,8 @@
 
   document.querySelectorAll("[data-copy-key]").forEach(function (button) {
     button.addEventListener("click", function () {
+      // data-key 必须放在按钮的祖先元素（<tr>）上：closest() 只向上找，
+      // 放在兄弟 <span> 里会静默失败（2026-11-12 的实际 bug）。
       var row = button.closest("[data-key]");
       if (!row) {
         return;

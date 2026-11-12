@@ -105,10 +105,10 @@
       </thead>
       <tbody id="api-keys-body">
         {% for item in api_keys %}
-        <tr data-key-row>
+        <tr data-key-row data-key="{{ item.key }}">
           <td class="mono">{{ item.id }}</td>
           <td>
-            <span class="mono key-mask" data-key="{{ item.key }}">{{ item.masked }}</span>
+            <span class="mono key-mask">{{ item.masked }}</span>
             <button class="btn btn-outline btn-sm key-copy" type="button" data-copy-key>复制</button>
           </td>
           <td class="key-desc-cell" data-key-desc>

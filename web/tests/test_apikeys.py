@@ -9,6 +9,7 @@ and the Bearer header added to ImageClient.
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -146,6 +147,31 @@ def test_create_key_writes_0600_and_shows_masked_value_with_data_key(client, set
     # The full secret is present exactly once (the copy attribute), never as text.
     assert page.text.count(entry["key"]) == 1
     assert "需 Key（1 个可用）" in page.text
+
+
+def test_copy_button_finds_key_on_its_row(client, settings):
+    """Regression: data-key must sit on an *ancestor* of the copy button.
+
+    apikeys.js copies with button.closest("[data-key]"), which only walks
+    ancestors. The attribute used to live on the sibling <span>, so closest
+    returned null and the button silently did nothing (reported 2026-11-12).
+    Keep it on the <tr>.
+    """
+
+    login(client)
+    token = csrf_token(client, "/apikeys")
+    post(client, "/apikeys", token, description="复制回归")
+    html = client.get("/apikeys").text
+    entry = read_payload(settings)["keys"][0]
+
+    rows = re.findall(r"<tr\b[^>]*>.*?</tr>", html, re.S)
+    copy_rows = [row for row in rows if "data-copy-key" in row]
+    assert copy_rows, "找不到含复制按钮的表格行"
+    for row in copy_rows:
+        opening_tag = row.split(">", 1)[0]
+        assert f'data-key="{entry["key"]}"' in opening_tag, (
+            "data-key 不在复制按钮的祖先元素上，closest 会返回 null，按钮点击将无反应"
+        )
 
 
 def test_create_key_allows_empty_description(client, settings):

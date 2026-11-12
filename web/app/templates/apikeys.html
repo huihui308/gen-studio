@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block title %}API Keys{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <p class="eyebrow">Qwen-Image 生图服务</p>
+    <h1>API Keys</h1>
+    <p class="lede">集中管理生图服务的访问凭证，用于模型调用身份鉴权</p>
+  </div>
+</section>
+
+{% if api_store_error %}
+<div class="alert alert-warn" role="alert">
+  <strong>API Key 配置文件异常：</strong>{{ api_store_error }}。<br>
+  页面按空列表展示；创建任一 API Key 后会用有效内容重写该文件。
+</div>
+{% endif %}
+
+<div class="alert alert-{{ api_mode_tone }}" role="status" id="api-access-mode">
+  当前访问模式：<strong id="api-mode-label">{{ api_mode_label }}</strong><br>
+  <span class="api-mode-rules">规则：从未创建过 API Key（配置文件不存在）为开放模式，局域网免凭证可调用；
+  创建后至少保留 1 个启用中的 Key 才是需 Key 模式，局域网调用必须携带该密钥；
+  全部停用或删除后为已锁定模式，仅本机回环（127.0.0.1）可调用。</span>
+</div>
+
+<section class="card" aria-labelledby="baseurl-title">
+  <header class="card-head">
+    <div>
+      <p class="eyebrow">接入地址</p>
+      <h2 id="baseurl-title">Base URL</h2>
+    </div>
+  </header>
+
+  <div class="baseurl-list">
+    <div class="baseurl-row">
+      <div class="baseurl-body">
+        <span class="field-label">OpenAI 兼容 Base URL</span>
+        <code class="mono baseurl-value" id="base-openai">{{ base_openai }}</code>
+      </div>
+      <button class="btn btn-outline btn-sm" type="button" data-copy-target="#base-openai">复制</button>
+    </div>
+    <div class="baseurl-row">
+      <div class="baseurl-body">
+        <span class="field-label">原生 Base URL</span>
+        <code class="mono baseurl-value" id="base-native">{{ base_native }}</code>
+      </div>
+      <button class="btn btn-outline btn-sm" type="button" data-copy-target="#base-native">复制</button>
+    </div>
+  </div>
+
+  {% if lan_note %}<p class="hint hint-warn">{{ lan_note }}</p>{% endif %}
+  <p class="hint">
+    局域网调用需携带 <code>Authorization: Bearer &lt;key&gt;</code> 或 <code>X-API-Key</code> 头；
+    本机回环（127.0.0.1）免 key；生图服务需监听 <code>0.0.0.0</code>（<code>serve_api.sh</code> 默认），
+    当前端口 <span class="mono">{{ service_port }}</span>。
+  </p>
+</section>
+
+<section class="card key-create-card" aria-labelledby="create-title">
+  <header class="card-head">
+    <div>
+      <p class="eyebrow">新建凭证</p>
+      <h2 id="create-title">创建 API Key</h2>
+    </div>
+  </header>
+
+  <form method="post" action="/apikeys" class="key-create-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="field">
+      <label class="field-label" for="key-description">描述 <span class="hint-inline">可选，最多 200 字</span></label>
+      <input class="input" type="text" id="key-description" name="description" maxlength="200"
+             placeholder="例如：批处理任务 / 本地调试用（可留空）">
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" type="submit">创建 API Key</button>
+      <span class="hint">创建后可在下表复制完整密钥；密钥可随时重置（换新值）或删除。</span>
+    </div>
+  </form>
+</section>
+
+<section class="card" aria-labelledby="keys-title">
+  <header class="card-head key-table-head">
+    <div>
+      <p class="eyebrow">凭证列表</p>
+      <h2 id="keys-title">API Key 列表</h2>
+    </div>
+    <div class="key-search">
+      <label class="field-label" for="key-search">搜索描述内容</label>
+      <input class="input" type="search" id="key-search" placeholder="搜索描述内容" autocomplete="off">
+    </div>
+  </header>
+
+  <div class="key-table-wrap">
+    <table class="field-table key-table">
+      <thead>
+        <tr>
+          <th scope="col">ID</th>
+          <th scope="col">API Key</th>
+          <th scope="col">描述</th>
+          <th scope="col">创建时间</th>
+          <th scope="col">调用</th>
+          <th scope="col">状态</th>
+          <th scope="col">操作</th>
+        </tr>
+      </thead>
+      <tbody id="api-keys-body">
+        {% for item in api_keys %}
+        <tr data-key-row>
+          <td class="mono">{{ item.id }}</td>
+          <td>
+            <span class="mono key-mask" data-key="{{ item.key }}">{{ item.masked }}</span>
+            <button class="btn btn-outline btn-sm key-copy" type="button" data-copy-key>复制</button>
+          </td>
+          <td class="key-desc-cell" data-key-desc>
+            {% if item.description %}{{ item.description }}{% else %}<span class="key-desc-empty">未填写</span>{% endif %}
+            <details class="key-edit">
+              <summary>编辑</summary>
+              <form method="post" action="/apikeys/{{ item.id }}/edit" class="key-edit-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <label class="field-label" for="key-desc-{{ item.id }}">描述（最多 200 字）</label>
+                <input class="input" type="text" id="key-desc-{{ item.id }}" name="description"
+                       maxlength="200" value="{{ item.description }}" placeholder="可留空">
+                <button class="btn btn-primary btn-sm" type="submit">保存描述</button>
+              </form>
+            </details>
+          </td>
+          <td>{% if item.created_at %}<span class="mono">{{ item.created_at|localtime }}</span>{% else %}—{% endif %}</td>
+          <td class="key-usage">
+            <span class="mono">{{ item.calls }} 次</span>
+            <span class="key-usage-time">{% if item.last_used_at %}{{ item.last_used_at|localtime }}{% else %}—{% endif %}</span>
+          </td>
+          <td>
+            <form method="post" action="/apikeys/{{ item.id }}/toggle" class="key-toggle-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button class="btn btn-sm key-toggle{% if item.enabled %} key-toggle-on{% else %} key-toggle-off{% endif %}"
+                      type="submit" title="点击{% if item.enabled %}停用{% else %}启用{% endif %}该密钥">
+                {{ "启用中" if item.enabled else "已停用" }}
+              </button>
+            </form>
+          </td>
+          <td>
+            <div class="key-actions">
+              <form method="post" action="/apikeys/{{ item.id }}/reset" class="key-action-form"
+                    data-confirm="确认重置 API Key #{{ item.id }}？旧密钥会立即失效，仍在使用它的调用都会失败。">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button class="btn btn-outline btn-sm" type="submit">重置</button>
+              </form>
+              <span class="key-sep" aria-hidden="true">|</span>
+              <form method="post" action="/apikeys/{{ item.id }}/delete" class="key-action-form"
+                    data-confirm="确认删除 API Key #{{ item.id }}？删除后无法恢复。">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button class="btn btn-danger-ghost btn-sm" type="submit">删除</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="7" class="key-empty">尚未创建任何 API Key。创建前局域网免凭证即可调用生图服务；创建后需携带密钥。</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <p class="hint">
+    完整密钥不直接显示，点「复制」取用（值保存在该行的 <code>data-key</code> 属性中）；
+    调用统计由生图服务写入只读文件，本页刷新即可看到最新计数。
+  </p>
+</section>
+{% endblock %}
+{% block scripts %}<script src="/static/apikeys.js" defer></script>{% endblock %}

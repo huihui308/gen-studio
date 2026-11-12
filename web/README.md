@@ -89,6 +89,7 @@ web/
 ├── app/
 │   ├── main.py              # FastAPI 应用、路由、鉴权依赖、安全响应头
 │   ├── config.py            # Settings / 路径 / 默认账号
+│   ├── apikeys.py           # 生图服务 API Key：签发/启停/重置（web/data/api_keys.json，0600）
 │   ├── modelaccess.py       # 每个模型独立的访问地址（web/data/model_access.json）
 │   ├── generation.py        # H3 视频生成任务：校验、提交、轮询、下载
 │   ├── imagegen.py          # Qwen-Image 生图：校验、multipart 转发、base64 结果
@@ -99,10 +100,10 @@ web/
 │   ├── units.py             # systemd --user unit 的启动、观察与停止
 │   ├── proc.py              # /proc、ss、端口、进程组工具
 │   ├── status.py            # 状态采集（如实标注不可用）
-│   ├── templates/           # base / login / control / generate / image / status / password
-│   └── static/              # app.css / generate.js / image.js / status.js / control.js / favicon.svg
-├── tests/                   # pytest：登录、改密、显卡必选、启停、状态、视频生成、图像生成
-└── data/（运行时生成，不入库）  # auth.json / state.json / model_access.json / logs/ / generated/
+│   ├── templates/           # base / login / control / generate / image / apikeys / status / password
+│   └── static/              # app.css / generate.js / image.js / apikeys.js / status.js / control.js / favicon.svg
+├── tests/                   # pytest：登录、改密、显卡必选、启停、状态、视频生成、图像生成、API Keys
+└── data/（运行时生成，不入库）  # auth.json / state.json / model_access.json / api_keys.json / api_keys_usage.json / logs/ / generated/
 ```
 
 ## 关键实现
@@ -207,6 +208,17 @@ web/
 - 生图服务没有进度接口，所以进度条是不确定状态、只显示已用时间；上游超时（600 秒）映射为 504，不可达映射为 502，参数/上传问题映射为 400。
 - 参考图只接受 png / jpg / webp / gif（按 magic bytes 判定，不信声明），单张 ≤20 MB；提示词为空时不发请求。
 
+### API Keys（2026-11-12）
+
+- 页面 `/apikeys`（nav「API Keys」），登录保护；仿千问/DashScope 的 API Keys 页：访问模式警示条 + 两行 Base URL（OpenAI 兼容 `/v1` 与原生，按 `_lan_ip()` 与生图服务端口拼出，带复制按钮）+ 常驻创建表单 + 七列表格（ID / 掩码 key / 描述 / 创建时间 / 调用 / 状态 / 操作）。
+- 访问模式三种，与生图服务的行为一一对应：key 文件不存在 →「开放」（局域网免凭证）；存在且至少 1 个启用 →「需 Key」；存在但 0 个启用 →「已锁定」（仅回环）。规则直接写在页面警示条上。
+- `app/apikeys.py: ApiKeyStore` 是 `web/data/api_keys.json` 的**唯一写方**：0600、临时文件 + `os.replace` 原子替换、`threading.Lock`，模式照抄 `ModelAccessStore`；key 为 `sk-` + 48 位 hex，`next_id` 单调递增（删除不复用 id），文件损坏时页面显示警示条、创建即自愈。描述 ≤200 字可留空。
+- 表格只显示掩码 `sk-xxxx****yyyy`，完整值只放行内 `data-key` 属性，由「复制」按钮取用；复制走 `execCommand('copy')` 回退——`http://<lan>` 非安全上下文没有 `navigator.clipboard`。搜索框纯前端按描述过滤行。
+- 调用统计 `api_keys_usage.json` 由**生图服务**写、本页只读（读失败静默忽略），表格展示次数与最近使用时间（`localtime` 过滤器）。
+- 写操作全部是表单 POST + CSRF（创建 / 编辑描述 / 启停 / 重置 / 删除），每个路径另有 GET 兜底友好重定向；重置与删除带前端二次确认（服务端语义不受 JS 影响，无 JS 也能完成全部操作）。
+- `ImageClient` 新增可选 `api_key_provider`（接 `store.first_enabled_key`）：`GEN_STUDIO_IMAGE_API_BASE` 指向局域网地址时，控制台代理会自动带 `Authorization: Bearer`；默认回环路径下行为与之前完全一致。
+- 服务侧对应行为见 `qwen-image/API.md` 第 2 节（鉴权）与第 7 节（OpenAI 兼容端点）：文件存在即开、回环豁免、Bearer / X-API-Key / `?api_key=` 三种传法、每请求 stat 重读（控制台建 key 免重启）。
+
 ### 运行状态（诚实呈现）
 
 - 每个字段为 `{label, value, available, source, note}`；`available=false` 时
@@ -256,6 +268,8 @@ web/
 - `web/data/auth.json` — 单用户凭据（0600，仅哈希）。
 - `web/data/sessions.json` — 已登录会话（0600：token、用户名、CSRF token、创建时间），控制台重启后仍有效。
 - `web/data/state.json` — 本系统启动的模型记录（0600，含 systemd 单元名，用于控制台重启后核对归属）。
+- `web/data/api_keys.json` — 生图服务的 API Key（0600；控制台唯一写方，生图服务只读；不存在 = 服务不鉴权）。
+- `web/data/api_keys_usage.json` — 每个 key 的调用次数与最近使用（0600；生图服务写、控制台只读）。
 - `web/data/logs/<model>.log` — 由控制台启动的模型 stdout/stderr。
 - `web/data/generated/<job_id>.mp4` — 视频生成成功后下载的 MP4（目录 0700、文件 0600；没有历史索引）。
 
@@ -264,7 +278,7 @@ web/
 ```bash
 cd web
 uv pip install -r requirements-dev.txt
-.venv/bin/python -m pytest        # 128 项，约 50 秒
+.venv/bin/python -m pytest        # 163 项，约 60 秒
 ```
 
 测试使用临时仓库 + 假启动脚本 + 假 `nvidia-smi`，不会触碰真实模型进程或
@@ -274,7 +288,10 @@ uv pip install -r requirements-dev.txt
 H3 真实 API 字段映射、Qwen 队列读取、状态片段鉴权、商务风静态资源、
 每个模型访问地址的独立保存、0600 权限、默认回环、启动时注入
 `GEN_STUDIO_MODEL_HOST`、非法值拒绝、CSRF、按模型互不影响，以及对写操作端点
-直接发 GET 时的友好重定向。生成相关覆盖：页面默认 480/10、空提示词与非法参数、
+直接发 GET 时的友好重定向。API Keys 覆盖：未登录拦截（页面 + 全部写端点）、创建
+（描述可空/超长拒绝）→ 文件 0600 且完整 key 只在 `data-key`、编辑、启停与模式翻转、
+重置换新值、删除同步文件且 id 不复用、GET 兜底重定向、伪造 CSRF 拒绝、usage 只读
+展示、坏文件警示与自愈、`ImageClient` 带 `Authorization` 头（含空 key 不带）。生成相关覆盖：页面默认 480/10、空提示词与非法参数、
 CSRF、未登录 401、异步任务成功/失败、视频端点、提示词回显与 502 提交失败。
 独立 unit 覆盖：启动时注入 unit/GPU/访问地址、控制台新实例识别已在运行的 unit
 而不重复启动、启动失败落状态、停止通过 systemd 单元完成。
@@ -300,6 +317,10 @@ CSRF、未登录 401、异步任务成功/失败、视频端点、提示词回�
 10. 启动 H3 后记录 `systemctl --user show gen-studio-minimax-h3 -p MainPID --value`；
     执行 `systemctl --user restart gen-studio` → 控制台恢复后 H3 PID 不变、`/health`
     仍为 200，控制页显示「运行中（systemd 单元）」，无需重新加载模型。
+11. 打开「API Keys」→ 创建一个 key（描述可空）→ 表格出现掩码行，点「复制」得到完整
+    `sk-` 密钥；再测编辑描述、启停、重置（二次确认后密钥换新）、删除（行消失）。用
+    `curl -H 'Authorization: Bearer <key>'` 调生图服务 `POST /v1/images/generations`
+    应通过鉴权；去掉头则 401。
 
 ## 边界与已知限制
 
@@ -311,7 +332,9 @@ CSRF、未登录 401、异步任务成功/失败、视频端点、提示词回�
   进度；生成页因此显示已用时间与不确定进度条，不编造百分比。状态页的 H3 队列 /
   耗时接口同样不可用，两者是不同数据源。
 - 控制台监听地址由部署配置决定；模型端口是否对局域网开放由各模型独立的
-  「模型访问地址」决定（默认回环）。模型 API 没有鉴权，只应在可信局域网内使用。
+  「模型访问地址」决定（默认回环）。H3 的模型 API 没有鉴权，只应在可信局域网内使用；
+  生图服务（30021）自 2026-11-12 起支持 API Key 鉴权（控制台「API Keys」页签发，
+  文件不存在时保持旧行为），回环调用始终豁免。
 - 控制台仍只有 admin 单账号 + HTTP，不含公网暴露、HTTPS、登录限速或多用户鉴权。
 - 会话为进程内存储，控制台重启后需重新登录；模型通过独立 systemd 单元运行，
   重启控制台不会停止或重新加载模型，重启后会自动重新识别。`state.json` 仍记录

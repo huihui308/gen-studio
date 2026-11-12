@@ -175,11 +175,13 @@ curl -s http://127.0.0.1:30021/generate -H 'Content-Type: application/json' \
   -d '{"prompt":"把 <image1> 重绘成水彩绘本画风","images":["/abs/ref.png"],"resolution":1024}'
 ```
 
-- `GET /health`（含 `comfy_reachable`）、`GET /result?filename=&subfolder=`（直接下载产物 PNG，远端不必再访问 ComfyUI 的 `/view`）、`POST /generate`（JSON 或 `multipart/form-data` 上传）
-- 默认监听 `0.0.0.0:30021`，局域网内其他设备/程序可直接调用（`--host 127.0.0.1` 可收回本机）；无鉴权，只放在可信内网
+- `GET /health`（含 `comfy_reachable` 与 `auth_required`）、`GET /result?filename=&subfolder=`（直接下载产物 PNG，远端不必再访问 ComfyUI 的 `/view`）、`POST /generate`（JSON 或 `multipart/form-data` 上传）
+- **API Key 鉴权**（2026-12-11 新增）：控制台写入 `web/data/api_keys.json` 后，受保护端点（`/generate`、`/v1/*`、`/result`）要求携带 `Authorization: Bearer sk-…`（或 `X-API-Key` / `?api_key=`）；文件不存在则保持旧的免鉴权行为，本机回环始终豁免，且每请求检测文件变化（建 key 无需重启服务）。key 在控制台「API Keys」页签发 / 启停
+- **OpenAI 兼容端点**：`POST /v1/images/generations`（`model`/`prompt`/`n`=1/`size`/`response_format`）+ `GET /v1/models`，任何 OpenAI 风格客户端都能用该页展示的 Base URL + key 直接调用
+- 默认监听 `0.0.0.0:30021`，局域网内其他设备/程序可直接调用（`--host 127.0.0.1` 可收回本机）；无 key 文件时不设鉴权——请只放可信内网，或先创建一个 key
 - 参数：`prompt`（必填）、`images`（≤16 张；本地路径 / `{"b64": …}` / 上传文件）、`resolution`（参考图面积预算，64–2048 且为 32 的倍数）、`width`/`height`（成对，≤2048；编辑模式下需贴近 `image_1`，否则画面漂移）、`seed`、`cfg`、`negative_prompt`、`tag`、`return_b64`、`timeout_s`
 - 尺寸语义：有参考图 → 画布跟随 `image_1`、面积约 `resolution²`；给了 `width`/`height` → 按该尺寸出图；无参考图 → `resolution × resolution` 方图
-- 返回：`{"ok":true,"prompt_id","seed","width","height","elapsed_s","peak_vram_mib","images":[{path,filename,subfolder,width,height,url}]}`；`return_b64=true` 时每张图附带 base64。失败为 `{"ok":false,"error":{"code","message"}}`：`missing_prompt` / `invalid_param` / `too_many_images` / `image_not_found` / `unsupported_image_type` / `payload_too_large`，`comfy_unreachable`(503)、`comfy_rejected` / `generation_failed`(502)、`generation_timeout`(504)
+- 返回：`{"ok":true,"prompt_id","seed","width","height","elapsed_s","peak_vram_mib","images":[{path,filename,subfolder,width,height,url}]}`；`return_b64=true` 时每张图附带 base64。失败为 `{"ok":false,"error":{"code","message"}}`：`missing_prompt` / `invalid_param` / `too_many_images` / `image_not_found` / `unsupported_image_type` / `payload_too_large`，`invalid_api_key` / `key_disabled`(401，带 `WWW-Authenticate: Bearer`)、`comfy_unreachable`(503)、`comfy_rejected` / `generation_failed`(502)、`generation_timeout`(504)
 - 接线要点：Autogrow 参考图槽位在 API 提示词里是 **`images.image_1` … `images.image_16`**——平铺的 `image_1` 能过 `/prompt` 校验，但执行时报 `unexpected keyword argument 'image_1'`
 - 参考图暂存 `ComfyUI/input/`，任务结束即删；产物落 `output/qwen-image-2.1-turbo/`
 - 实测（GPU0，1024²）：参考图重绘 58 s、纯文生图 35 s、multipart 上传 56 s；从局域网另一台机器发起的纯文生图 41 s，产物可经 `/result` 直接下载
@@ -205,7 +207,7 @@ curl -s http://127.0.0.1:30021/generate -H 'Content-Type: application/json' \
 
 ## web 控制台
 
-`web/` 是 FastAPI + Jinja2 服务端渲染的控制台（无前端构建），默认只监听 `127.0.0.1:8090`；最初范围是 5 项运维需求，后续新增 H3 视频生成页与图像生成页：
+`web/` 是 FastAPI + Jinja2 服务端渲染的控制台（无前端构建），默认只监听 `127.0.0.1:8090`；最初范围是 5 项运维需求，后续新增 H3 视频生成页、图像生成页与 API Keys 页：
 
 1. **登录** — 仅用户名 + 密码，默认 `admin / admin`；密码以 PBKDF2 哈希落盘，服务端会话；未登录访问任一功能页统一跳转 `/login`。
 2. **密码设置** — `/password` 修改密码（校验当前密码、策略与 CSRF），并注销其它会话。
@@ -214,6 +216,7 @@ curl -s http://127.0.0.1:30021/generate -H 'Content-Type: application/json' \
 5. **商务风界面** — 深海军蓝 + 暗金、白色卡片、状态药丸、响应式布局。
 6. **H3 视频生成（后续扩展）** — `/generate` 把文本提示词提交给本机 H3 `/v1/videos`，轮询任务并展示进度，完成后播放下载的 MP4，同时回显提示词与参数。默认短边 480、10 秒、固定 16:9；时长 4–15 秒。任务只存在控制台内存中，没有作品画廊或历史列表。
 7. **图像生成（后续扩展）** — `/image` 支持可选参考图（multipart 上传，png/jpg/webp/gif ≤20 MB）+ 提示词 + 分辨率预设（768–2048，默认 1024）+ 可选随机种子；由控制台**服务端代理**调用本机 Qwen-Image 生图服务（`GEN_STUDIO_IMAGE_API_BASE`，默认 `http://127.0.0.1:30021`），浏览器同源、不越出 CSP。页面显示已用时间与不确定进度条（服务无进度接口），用返回的 base64 直接预览，下载按服务返回的 `filename` 命名；结果图点击后全屏预览，支持鼠标滚轮缩放（100%–800%）、放大后拖拽平移与一键复位。
+8. **API Keys（后续扩展）** — `/apikeys` 管理生图服务的调用凭证：展示 OpenAI 兼容与原生两行 Base URL（带复制按钮），可创建 / 编辑描述 / 重置 / 删除 / 启停 `sk-` 密钥（表格内掩码显示，完整值只放 `data-key`），支持按描述搜索，并只读展示各 key 的调用统计。控制台是 `web/data/api_keys.json` 的唯一写方（0600、原子替换），生图服务只读该文件并在局域网调用时强制 `Authorization: Bearer`（回环豁免）。
 
 每个模型运行在独立的 transient systemd user unit（`gen-studio-minimax-h3`、`gen-studio-qwen-image2.0`）中，因此重启控制台不会停止或重新加载正在运行的模型；控制台重启后会自动识别并接管现有 unit。
 

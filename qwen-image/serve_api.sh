@@ -2,7 +2,9 @@
 # Qwen-Image-2.1-Turbo HTTP 生图服务（后台常驻薄封装）
 #   start/stop/status 管理 gen_api.py；日志落 logs/gen_api.log
 #   依赖：ComfyUI 已由 ./serve.sh 起在 127.0.0.1:30020
-#   默认对外监听 0.0.0.0:30021（无鉴权，靠内网/防火墙隔离）；设 GEN_STUDIO_IMAGE_API_HOST=127.0.0.1 可收回本机
+#   默认对外监听 0.0.0.0:30021（鉴权：存在 web/data/api_keys.json 即要求 API Key，
+#   本机回环 127.0.0.1/::1 豁免；无该文件时不限制，靠内网/防火墙隔离）；
+#   设 GEN_STUDIO_IMAGE_API_HOST=127.0.0.1 可收回本机；三个 env 见 gen_api.py 顶部说明
 set -euo pipefail
 cd "$(dirname "$0")"
 

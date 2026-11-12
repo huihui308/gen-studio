@@ -65,6 +65,7 @@ from .imagegen import (
     validate_request as validate_image_request,
     validate_upload,
 )
+from .apikeys import ApiKeyError, ApiKeyStore, MODE_KEY, MODE_OPEN
 from .gpu import GpuProbe
 from .manager import ControlError, ModelManager
 from .modelaccess import ModelAccessError, ModelAccessStore
@@ -129,6 +130,26 @@ def _console_port() -> int:
     return port if 1 <= port <= 65535 else 8090
 
 
+def _image_service_port(base_url: str) -> int:
+    """Port of the image service parsed from its base URL; 30021 when unclear."""
+
+    try:
+        port = urlsplit(base_url or "").port
+    except ValueError:
+        port = None
+    return port if isinstance(port, int) and 1 <= port <= 65535 else 30021
+
+
+def _api_mode_label(mode: str, enabled_count: int) -> str:
+    """Headline for the access mode agreed with the image service."""
+
+    if mode == MODE_OPEN:
+        return "开放（未配置 API Key，局域网免凭证可调用）"
+    if mode == MODE_KEY:
+        return f"需 Key（{enabled_count} 个可用）"
+    return "已锁定（无可用 Key，仅本机回环可调用）"
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
     settings.ensure_dirs()
@@ -139,9 +160,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     manager = ModelManager(settings, gpu_probe)
     collector = StatusCollector(settings, gpu_probe, manager)
     model_access_store = ModelAccessStore(settings.data_dir / "model_access.json")
+    api_key_store = ApiKeyStore(
+        settings.data_dir / "api_keys.json",
+        settings.data_dir / "api_keys_usage.json",
+    )
     generation_manager = GenerationManager(settings)
+    # The console authenticates itself with the lowest-id enabled API key so
+    # it keeps working when the service base URL is a LAN address.
     image_client = ImageClient(
-        os.environ.get("GEN_STUDIO_IMAGE_API_BASE", "http://127.0.0.1:30021")
+        os.environ.get("GEN_STUDIO_IMAGE_API_BASE", "http://127.0.0.1:30021"),
+        api_key_provider=api_key_store.first_enabled_key,
     )
 
     app = FastAPI(
@@ -157,6 +185,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.manager = manager
     app.state.collector = collector
     app.state.model_access_store = model_access_store
+    app.state.api_key_store = api_key_store
     app.state.generation_manager = generation_manager
     app.state.image_client = image_client
 
@@ -305,7 +334,47 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "default_password": users.is_default_password(session.username),
         }
 
+    def apikeys_context(request: Request) -> dict:
+        """Rows, access mode and Base URLs for the API Keys page."""
+
+        store = request.app.state.api_key_store
+        usage = store.usage()
+        rows = []
+        for item in store.list():
+            stat = usage.get(item.id, {})
+            rows.append(
+                {
+                    "id": item.id,
+                    "key": item.key,
+                    "masked": item.masked,
+                    "description": item.description,
+                    "created_at": item.created_at,
+                    "enabled": item.enabled,
+                    "calls": stat.get("calls", 0),
+                    "last_used_at": stat.get("last_used_at"),
+                }
+            )
+        mode, enabled_count = store.access_mode()
+        lan_ip = _lan_ip()
+        lan_note = None
+        if not lan_ip:
+            lan_ip = "127.0.0.1"
+            lan_note = "未能检测到局域网地址，已回退到 127.0.0.1，下列地址仅本机可用"
+        port = _image_service_port(getattr(request.app.state.image_client, "base_url", ""))
+        return {
+            "api_keys": rows,
+            "api_mode": mode,
+            "api_mode_label": _api_mode_label(mode, enabled_count),
+            "api_mode_tone": "success" if mode == MODE_KEY else "warn",
+            "api_store_error": store.error,
+            "base_openai": f"http://{lan_ip}:{port}/v1",
+            "base_native": f"http://{lan_ip}:{port}",
+            "lan_note": lan_note,
+            "service_port": port,
+        }
+
     # ----------------------------------------------------------------- pages
+
     @app.get("/", include_in_schema=False)
     async def root(request: Request):
         if get_session(request) is None:
@@ -617,6 +686,123 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         payload = {"ok": True}
         payload.update(result)
         return JSONResponse(payload)
+
+    # -------------------------------------------------------------- API Keys
+    @app.get("/apikeys", response_class=HTMLResponse)
+    async def apikeys_page(request: Request):
+        session = require_user(request)
+        return render(
+            request,
+            "apikeys.html",
+            session=session,
+            active="apikeys",
+            **apikeys_context(request),
+        )
+
+    @app.post("/apikeys", response_class=HTMLResponse)
+    async def apikeys_create(
+        request: Request,
+        description: str = Form(""),
+        csrf_token: str = Form(""),
+    ):
+        session = require_user(request)
+        if not csrf_ok(session, csrf_token):
+            return _redirect("/apikeys", error="会话校验失败，请刷新页面后重试")
+        store = request.app.state.api_key_store
+        try:
+            created = store.create(description)
+        except ApiKeyError as exc:
+            return _redirect("/apikeys", error=str(exc))
+        return _redirect(
+            "/apikeys",
+            notice=f"已创建 API Key #{created.id}（{created.masked}），可在列表中复制完整密钥",
+        )
+
+    @app.get("/apikeys/{key_id}/edit")
+    async def apikeys_edit_get(request: Request, key_id: int):
+        require_user(request)
+        return _redirect(
+            "/apikeys",
+            error="修改描述请使用列表行内的「编辑」表单（POST）；直接访问不会修改任何配置。",
+        )
+
+    @app.post("/apikeys/{key_id}/edit")
+    async def apikeys_edit(
+        request: Request,
+        key_id: int,
+        description: str = Form(""),
+        csrf_token: str = Form(""),
+    ):
+        session = require_user(request)
+        if not csrf_ok(session, csrf_token):
+            return _redirect("/apikeys", error="会话校验失败，请刷新页面后重试")
+        store = request.app.state.api_key_store
+        try:
+            store.edit(key_id, description)
+        except ApiKeyError as exc:
+            return _redirect("/apikeys", error=str(exc))
+        return _redirect("/apikeys", notice=f"已更新 API Key #{key_id} 的描述")
+
+    @app.get("/apikeys/{key_id}/toggle")
+    async def apikeys_toggle_get(request: Request, key_id: int):
+        require_user(request)
+        return _redirect(
+            "/apikeys",
+            error="启用 / 停用请使用列表中的状态按钮（POST）；直接访问不会改变任何状态。",
+        )
+
+    @app.post("/apikeys/{key_id}/toggle")
+    async def apikeys_toggle(request: Request, key_id: int, csrf_token: str = Form("")):
+        session = require_user(request)
+        if not csrf_ok(session, csrf_token):
+            return _redirect("/apikeys", error="会话校验失败，请刷新页面后重试")
+        store = request.app.state.api_key_store
+        try:
+            updated = store.toggle(key_id)
+        except ApiKeyError as exc:
+            return _redirect("/apikeys", error=str(exc))
+        state = "启用中" if updated.enabled else "已停用"
+        return _redirect("/apikeys", notice=f"API Key #{key_id} 当前状态：{state}")
+
+    @app.get("/apikeys/{key_id}/reset")
+    async def apikeys_reset_get(request: Request, key_id: int):
+        require_user(request)
+        return _redirect(
+            "/apikeys",
+            error="重置密钥请使用列表中的「重置」按钮（POST）；直接访问不会更换任何密钥。",
+        )
+
+    @app.post("/apikeys/{key_id}/reset")
+    async def apikeys_reset(request: Request, key_id: int, csrf_token: str = Form("")):
+        session = require_user(request)
+        if not csrf_ok(session, csrf_token):
+            return _redirect("/apikeys", error="会话校验失败，请刷新页面后重试")
+        store = request.app.state.api_key_store
+        try:
+            store.reset(key_id)
+        except ApiKeyError as exc:
+            return _redirect("/apikeys", error=str(exc))
+        return _redirect("/apikeys", notice=f"API Key #{key_id} 已重置，旧密钥立即失效")
+
+    @app.get("/apikeys/{key_id}/delete")
+    async def apikeys_delete_get(request: Request, key_id: int):
+        require_user(request)
+        return _redirect(
+            "/apikeys",
+            error="删除请使用列表中的「删除」按钮（POST）；直接访问不会删除任何密钥。",
+        )
+
+    @app.post("/apikeys/{key_id}/delete")
+    async def apikeys_delete(request: Request, key_id: int, csrf_token: str = Form("")):
+        session = require_user(request)
+        if not csrf_ok(session, csrf_token):
+            return _redirect("/apikeys", error="会话校验失败，请刷新页面后重试")
+        store = request.app.state.api_key_store
+        try:
+            store.delete(key_id)
+        except ApiKeyError as exc:
+            return _redirect("/apikeys", error=str(exc))
+        return _redirect("/apikeys", notice=f"API Key #{key_id} 已删除")
 
     @app.get("/status", response_class=HTMLResponse)
     async def status_page(request: Request):

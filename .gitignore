@@ -28,6 +28,9 @@ qwen-image/logs/
 # 本地私有知识库（AI 工作日志：踩坑、决策、机器细节），不对外发布
 second-brain/
 
+# 生图服务对外对接说明（含内网 IP / 主机细节，不进公开仓库）
+qwen-image/API.md
+
 # 本地测试用虚拟环境
 .venv-test/
 

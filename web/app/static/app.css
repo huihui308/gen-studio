@@ -1857,3 +1857,176 @@ body.lightbox-open {
     grid-template-columns: 1fr;
   }
 }
+
+/* ------------------------------------------------------------- API keys */
+.baseurl-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.baseurl-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.baseurl-body {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.baseurl-value {
+  color: var(--ink);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.key-create-form {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.key-table-head {
+  align-items: flex-end;
+}
+
+.key-search {
+  display: grid;
+  gap: 6px;
+  min-width: 240px;
+}
+
+.key-table-wrap {
+  overflow-x: auto;
+  margin-top: 12px;
+}
+
+.key-table td {
+  vertical-align: middle;
+}
+
+.key-mask {
+  display: inline-block;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--ink);
+  font-size: 12.5px;
+}
+
+.key-copy {
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+.key-desc-empty {
+  color: var(--muted-2);
+}
+
+.key-edit {
+  margin-top: 6px;
+}
+
+.key-edit summary {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  list-style-position: outside;
+}
+
+.key-edit-form {
+  display: grid;
+  gap: 8px;
+  max-width: 360px;
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.key-edit-form .input {
+  height: 38px;
+  font-size: 13px;
+}
+
+.key-usage {
+  white-space: nowrap;
+}
+
+.key-usage-time {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted-2);
+  font-size: 11.5px;
+}
+
+.key-toggle-form {
+  display: inline-block;
+}
+
+.key-toggle {
+  min-width: 78px;
+  border-radius: 999px;
+}
+
+.key-toggle-on {
+  border-color: var(--success-line);
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.key-toggle-off {
+  border-color: var(--line-strong);
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.key-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.key-action-form {
+  display: inline-block;
+}
+
+.key-sep {
+  color: var(--muted-2);
+}
+
+.key-empty {
+  padding: 22px 12px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.api-mode-rules {
+  font-size: 12.5px;
+  opacity: 0.9;
+}
+
+/* 复制回退用的临时 textarea：CSP 禁止内联 style，只能用类名隐藏 */
+.copy-helper {
+  position: fixed;
+  left: -9999px;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+}
+

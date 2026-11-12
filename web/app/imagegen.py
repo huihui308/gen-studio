@@ -21,6 +21,7 @@ import base64
 import json
 import math
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -277,10 +278,15 @@ class ImageClient:
         *,
         timeout: float = DEFAULT_GENERATE_TIMEOUT,
         health_timeout: float = DEFAULT_HEALTH_TIMEOUT,
+        api_key_provider: Callable[[], str | None] | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout = float(timeout)
         self.health_timeout = float(health_timeout)
+        #: Optional credential supplier (the lowest-id enabled API key).  When
+        #: it returns a non-empty value, ``generate`` sends it as a Bearer
+        #: token; ``None`` keeps the original no-credential behaviour.
+        self.api_key_provider = api_key_provider
 
     # ------------------------------------------------------------------ health
     def healthy(self) -> bool:
@@ -320,11 +326,17 @@ class ImageClient:
             body = json.dumps(fields).encode("utf-8")
             content_type = "application/json"
 
+        headers = {"Content-Type": content_type, "Accept": "application/json"}
+        if self.api_key_provider is not None:
+            api_key = self.api_key_provider()
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
+
         request = Request(
             f"{self.base_url}/generate",
             data=body,
             method="POST",
-            headers={"Content-Type": content_type, "Accept": "application/json"},
+            headers=headers,
         )
         try:
             with urlopen(request, timeout=self.timeout) as response:

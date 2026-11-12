@@ -178,11 +178,13 @@ curl -s http://127.0.0.1:30021/generate -H 'Content-Type: application/json' \
   -d '{"prompt":"restyle <image1> as a watercolour children-book page","images":["/abs/ref.png"],"resolution":1024}'
 ```
 
-- `GET /health` (includes `comfy_reachable`), `GET /result?filename=&subfolder=` (downloads a generated PNG, so remote callers never need ComfyUI's `/view`), `POST /generate` — JSON body or `multipart/form-data` upload
-- Listens on `0.0.0.0:30021` by default so other devices/programs on the LAN can call it (`--host 127.0.0.1` to keep it local); no auth, keep it inside a trusted network
+- `GET /health` (includes `comfy_reachable` and `auth_required`), `GET /result?filename=&subfolder=` (downloads a generated PNG, so remote callers never need ComfyUI's `/view`), `POST /generate` — JSON body or `multipart/form-data` upload
+- **API-key auth** (2026-11-12): once the console writes `web/data/api_keys.json`, protected endpoints (`/generate`, `/v1/*`, `/result`) require `Authorization: Bearer sk-…` (or `X-API-Key` / `?api_key=`); the file's absence keeps the old open behaviour, loopback callers are always exempt, and the service re-reads the file on change (no restart after minting a key). Keys are issued/stopped on the console's **API Keys** page
+- **OpenAI-compatible endpoint**: `POST /v1/images/generations` (`model`/`prompt`/`n`=1/`size`/`response_format`) + `GET /v1/models`, so any OpenAI-style client works with the Base URL + key shown on that page
+- Listens on `0.0.0.0:30021` by default so other devices/programs on the LAN can call it (`--host 127.0.0.1` to keep it local); without a key file it is unauthenticated — keep it inside a trusted network or create a key
 - Parameters: `prompt` (required), `images` (≤16; local path, `{"b64": …}`, or an uploaded file), `resolution` (reference-image pixel budget, 64–2048 in multiples of 32), `width`/`height` (paired, ≤2048; keep close to `image_1` or the edit drifts), `seed`, `cfg`, `negative_prompt`, `tag`, `return_b64`, `timeout_s`
 - Output semantics: with `images`, the canvas follows `image_1` at ≈`resolution²` area; with `width`/`height` the given size wins; no images → `resolution × resolution` square
-- Response: `{"ok":true,"prompt_id","seed","width","height","elapsed_s","peak_vram_mib","images":[{path,filename,subfolder,width,height,url}]}`; base64 is added when `return_b64=true`. Errors are `{"ok":false,"error":{"code","message"}}`: `missing_prompt` / `invalid_param` / `too_many_images` / `image_not_found` / `unsupported_image_type` / `payload_too_large`, `comfy_unreachable` (503), `comfy_rejected` / `generation_failed` (502), `generation_timeout` (504)
+- Response: `{"ok":true,"prompt_id","seed","width","height","elapsed_s","peak_vram_mib","images":[{path,filename,subfolder,width,height,url}]}`; base64 is added when `return_b64=true`. Errors are `{"ok":false,"error":{"code","message"}}`: `missing_prompt` / `invalid_param` / `too_many_images` / `image_not_found` / `unsupported_image_type` / `payload_too_large`, `invalid_api_key` / `key_disabled` (401, with `WWW-Authenticate: Bearer`), `comfy_unreachable` (503), `comfy_rejected` / `generation_failed` (502), `generation_timeout` (504)
 - Wiring note: the Autogrow reference slots are `images.image_1` … `images.image_16` **in the API prompt** — flat `image_1` passes `/prompt` validation but dies at execution with `unexpected keyword argument 'image_1'`
 - Reference images are staged into `ComfyUI/input/` and deleted after the job; outputs land in `output/qwen-image-2.1-turbo/`
 - Measured (GPU0, 1024²): reference restyle 58 s, pure t2i 35 s, multipart upload 56 s, and 41 s for a text-to-image call issued from another machine on the LAN
@@ -208,7 +210,7 @@ All sizes fit; peak VRAM stays pinned at ~11.7/12 GiB because ComfyUI streams qu
 
 ## web console
 
-`web/` is a FastAPI + Jinja2 console (no frontend build step) bound to `127.0.0.1:8090` by default. Its original scope is five operational requirements; two generation pages (H3 video, Qwen-Image pictures) were added later:
+`web/` is a FastAPI + Jinja2 console (no frontend build step) bound to `127.0.0.1:8090` by default. Its original scope is five operational requirements; three pages were added later (H3 video, Qwen-Image pictures, API Keys):
 
 1. **Login** — username/password only; default `admin / admin`, PBKDF2 hashes on disk, server-side sessions; every functional page redirects to `/login` when unauthenticated.
 2. **Password settings** — `/password` changes the password (current password + policy + CSRF) and revokes other sessions.
@@ -217,6 +219,7 @@ All sizes fit; peak VRAM stays pinned at ~11.7/12 GiB because ComfyUI streams qu
 5. **Business-style UI** — navy/gold console styling, white cards, status pills, responsive layout.
 6. **H3 video generation (later extension)** — `/generate` submits a text prompt to the local H3 `/v1/videos` API, polls the job, shows progress, then plays the downloaded MP4 and echoes the prompt and parameters. Defaults: 480 short edge, 10 seconds, fixed 16:9; duration is 4–15 seconds. Jobs live in console memory and there is no gallery or history list.
 7. **Image generation (later extension)** — `/image` takes an optional reference image (multipart upload, png/jpg/webp/gif ≤20 MB) plus a prompt, a resolution preset and an optional seed, and proxies the call server-side to the local Qwen-Image service (`GEN_STUDIO_IMAGE_API_BASE`, default `http://127.0.0.1:30021`); proxying keeps the browser same-origin and inside the CSP. The page shows elapsed time plus an indeterminate bar (the service exposes no progress endpoint), previews the returned base64 image, and downloads it under the service-provided filename; clicking the result opens a full-screen preview with mouse-wheel zoom (100–800%), drag-to-pan while zoomed, and one-click reset.
+8. **API Keys (later extension)** — `/apikeys` manages credentials for the Qwen-Image service: shows the OpenAI-compatible and native Base URLs with copy buttons, and mints/edits/resets/deletes/toggles `sk-` keys (masked in the table, full value only in `data-key`) with a description search and read-only call counters. The console is the sole writer of `web/data/api_keys.json` (0600, atomic swap); the image service reads it and enforces `Authorization: Bearer` on LAN calls (loopback exempt).
 
 Each model runs in its own transient systemd user unit (`gen-studio-minimax-h3`, `gen-studio-qwen-image2.0`). Restarting the console therefore does not stop or reload a running model; the console reconnects to the existing unit after a restart.
 

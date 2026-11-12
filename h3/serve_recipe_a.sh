@@ -11,6 +11,13 @@
 #      这里补 lib64 -> lib、libcudart.so -> libcudart.so.13 两个软链（在 env312 内部，只需一次）。
 #   3. 还需要 ninja 在 PATH 上（env312/bin/ninja，装 sglang 时已带进来）。
 set -euo pipefail
+# 强约束（2026-11-12 David）：本机 h3 与 qwen-image 只能同时运行一个。
+# 控制台启动路径已在 web/app/manager.py 做同样的互斥拒绝；这里是绕过控制台
+# 手动启动时的兜底闸门——检测到 qwen-image 后端（ComfyUI）进程就直接退出。
+if pgrep -f 'ComfyUI/main.py' >/dev/null 2>&1; then
+  echo "互斥约束：Qwen-Image（ComfyUI）正在运行，本机同时只能跑一个生成模型；请先停止它再启动 h3。" >&2
+  exit 1
+fi
 H3=${H3:-/mnt/sdb1/soft/deploy-models/h3}
 CU13="$H3/env312/lib/python3.12/site-packages/nvidia/cu13"
 

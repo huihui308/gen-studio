@@ -417,6 +417,23 @@ class ModelManager:
                     f"{spec.name} 已有控制台之外启动的进程（PID {detection.pid}）正在加载，"
                     "无法重复启动；请先停止该进程，或等待其完成加载"
                 )
+            # Strong machine-level constraint (2026-11-12): the two generation
+            # models (h3 / qwen-image) may never run at the same time.  Starting
+            # one while the other is alive (console-managed, external, or merely
+            # holding its port) is refused rather than preempted — silently
+            # stopping the other would kill an in-flight generation.  The entry
+            # scripts repeat this gate for starts that bypass the console.
+            for other_id, other_spec in self.catalog.items():
+                if other_id == model_id:
+                    continue
+                other = self.detect(other_id)
+                if other.managed or other.unmanaged or other.port_open:
+                    owner = f"（PID {other.pid}）" if other.pid else ""
+                    raise StartError(
+                        f"本机强约束：两个生成模型只能同时运行一个。"
+                        f"{other_spec.name} 正在运行{owner}，或其端口 {other_spec.port} 被占用；"
+                        f"请先停止它，再启动 {spec.name}"
+                    )
             if state.last_status == "failed":
                 # A fresh start is allowed; clear the previous failure note.
                 state.last_error = None

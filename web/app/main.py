@@ -300,11 +300,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             else:
                 label, tone = "已停止", "neutral"
 
+            # 互斥强约束：另一个模型在运行时禁用本模型的启动按钮（后端 start()
+            # 也会拒绝，这里只是让用户在点击前就看到原因）。
+            mutex_block = None
+            for other_id in MODEL_ORDER:
+                if other_id == model_id:
+                    continue
+                other = manager.detect(other_id)
+                if other.managed or other.unmanaged or other.port_open:
+                    mutex_block = CATALOG[other_id].name
+                    break
             can_start = (
                 listing.available
                 and not detection.port_open
                 and not detection.managed
                 and not detection.unmanaged
+                and mutex_block is None
             )
             can_stop = bool(detection.managed or (detection.unmanaged and detection.marker_match))
             cards.append(
@@ -322,6 +333,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "note": detection.note or (state.last_error if state.last_status == "failed" else None),
                     "can_start": can_start,
                     "can_stop": can_stop,
+                    "mutex_block": mutex_block,
                     "failed": state.last_status == "failed",
                     "access_host": request.app.state.model_access_store.get(model_id),
                 }

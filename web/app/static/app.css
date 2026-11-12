@@ -2030,3 +2030,127 @@ body.lightbox-open {
   opacity: 0;
 }
 
+/* ------------------------------------------------- device gauges (status) */
+.gauge-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 14px;
+}
+
+.gauge-card {
+  margin: 0;
+  padding: 14px 12px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  text-align: center;
+}
+
+.gauge {
+  display: block;
+  width: 100%;
+  max-width: 250px;
+  height: auto;
+  margin: 0 auto;
+}
+
+.gauge-track {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 10;
+  stroke-linecap: round;
+}
+
+.gauge-fill {
+  fill: none;
+  stroke-width: 10;
+  stroke-linecap: round;
+}
+
+.gauge-fill--ok { stroke: var(--success); }
+.gauge-fill--warn { stroke: var(--warning); }
+.gauge-fill--danger { stroke: var(--danger); }
+
+.gauge-tick {
+  stroke: var(--muted-2);
+  stroke-width: 1.5;
+}
+
+.gauge-tick--major {
+  stroke: var(--ink-2);
+  stroke-width: 2.5;
+}
+
+.gauge-needle {
+  stroke: var(--navy-800);
+  stroke-width: 3.5;
+  stroke-linecap: round;
+}
+
+.gauge-hub {
+  fill: var(--navy-800);
+}
+
+.gauge-value {
+  font-size: 25px;
+  font-weight: 700;
+  fill: var(--ink);
+}
+
+.gauge-value--ok { fill: var(--success); }
+.gauge-value--warn { fill: var(--warning); }
+.gauge-value--danger { fill: var(--danger); }
+
+.gauge-scale {
+  font-size: 10px;
+  fill: var(--muted-2);
+}
+
+.gauge-na {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 150px;
+}
+
+.gauge-caption {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+}
+
+.gauge-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.gauge-sub {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.gauge-warn {
+  font-size: 11.5px;
+  color: var(--warning);
+  font-weight: 600;
+}
+
+.gauge-bar {
+  display: block;
+  width: 100%;
+  height: 6px;
+  margin-top: 8px;
+}
+
+.gauge-bar-track {
+  fill: var(--line);
+}
+
+.gauge-bar-fill--ok { fill: var(--success); }
+.gauge-bar-fill--warn { fill: var(--warning); }
+.gauge-bar-fill--danger { fill: var(--danger); }
+
+

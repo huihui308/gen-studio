@@ -102,7 +102,7 @@ web/
 │   ├── status.py            # 状态采集（如实标注不可用）
 │   ├── templates/           # base / login / control / generate / image / apikeys / status / password
 │   └── static/              # app.css / generate.js / image.js / apikeys.js / status.js / control.js / favicon.svg
-├── tests/                   # pytest：登录、改密、显卡必选、启停、状态、视频生成、图像生成、API Keys
+├── tests/                   # pytest：登录、改密、启停、状态、视频/图像生成、API Keys、设备仪表盘
 └── data/（运行时生成，不入库）  # auth.json / state.json / model_access.json / api_keys.json / api_keys_usage.json / logs/ / generated/
 ```
 
@@ -223,6 +223,18 @@ web/
 
 - 每个字段为 `{label, value, available, source, note}`；`available=false` 时
   `note` 必须解释原因。模板对不可用值渲染「不可用」徽标 + 原因，而不是空白或假值。
+- **设备仪表盘**（2026-11-12）：页面顶部新增汽车仪表盘区——CPU、内存、每块 GPU 各一枚
+  270° 弧形表盘（SVG 服务端渲染，随 `/status/partial` 每 5 秒整体刷新），含 11 根刻度、
+  指针、中央数值与分级配色（`app/status.py: LEVELS/level`，正常/偏高/告警三档）。
+  - 取数：CPU 用 `/proc/stat` 两次采样差值（构造时打点，窗口 <0.5s 复用最近实测、
+    >60s 留空不给过期均值）；内存用 `/proc/meminfo`（used 口径与 `free` 一致，
+    实测逐字节相等）；GPU 复用现有 `GpuProbe`，每卡一枚表盘（指针=利用率，
+    卡底细条=显存占比，副文案含型号/显存/温度）。
+  - `payload.device = {cpu, memory}` 挂进 `collect()`，`GET /api/status` 同步返回；
+    阈值：CPU 70/90、内存 75/90、GPU 利用率 70/90、显存 80/95、温度 75/90（°C）。
+  - 边界：nvidia-smi 失败 → GPU 表盘整块不渲染（只留 CPU/内存 + 告警文案），单卡字段
+    缺失 → 该盘显示「不可用」徽标；`/proc` 读取失败 → 该盘留空并给出原因；页面任何
+    位置不出现 NaN/undefined。
 - **MiniMax H3**：健康检查 `GET /health`、`/server_info`（已加载模型、SGLang 版本、
   并行度）、`/v1/models`（任务类型、管线、精度）、PID / 运行时长 / 端口 / 显卡 /
   显存 / 利用率 / 温度；队列与生成耗时因 SGLang 0.5.22 未暴露对应接口而标注不可用。
@@ -278,7 +290,7 @@ web/
 ```bash
 cd web
 uv pip install -r requirements-dev.txt
-.venv/bin/python -m pytest        # 163 项，约 60 秒
+.venv/bin/python -m pytest        # 179 项，约 65 秒
 ```
 
 测试使用临时仓库 + 假启动脚本 + 假 `nvidia-smi`，不会触碰真实模型进程或
@@ -291,7 +303,10 @@ H3 真实 API 字段映射、Qwen 队列读取、状态片段鉴权、商务风�
 直接发 GET 时的友好重定向。API Keys 覆盖：未登录拦截（页面 + 全部写端点）、创建
 （描述可空/超长拒绝）→ 文件 0600 且完整 key 只在 `data-key`、编辑、启停与模式翻转、
 重置换新值、删除同步文件且 id 不复用、GET 兜底重定向、伪造 CSRF 拒绝、usage 只读
-展示、坏文件警示与自愈、`ImageClient` 带 `Authorization` 头（含空 key 不带）。生成相关覆盖：页面默认 480/10、空提示词与非法参数、
+展示、坏文件警示与自愈、`ImageClient` 带 `Authorization` 头（含空 key 不带）。
+设备仪表盘覆盖：payload 含 `device` 块、CPU 差值采样（注入样本算出精确百分比）、
+首采/过期窗口留空带原因、阈值分级、页面 4 盘渲染无 NaN/无空表盘、GPU 探针失败时
+只画 CPU+内存两盘、partial 片段含仪表盘。生成相关覆盖：页面默认 480/10、空提示词与非法参数、
 CSRF、未登录 401、异步任务成功/失败、视频端点、提示词回显与 502 提交失败。
 独立 unit 覆盖：启动时注入 unit/GPU/访问地址、控制台新实例识别已在运行的 unit
 而不重复启动、启动失败落状态、停止通过 systemd 单元完成。
@@ -321,6 +336,9 @@ CSRF、未登录 401、异步任务成功/失败、视频端点、提示词回�
     `sk-` 密钥；再测编辑描述、启停、重置（二次确认后密钥换新）、删除（行消失）。用
     `curl -H 'Authorization: Bearer <key>'` 调生图服务 `POST /v1/images/generations`
     应通过鉴权；去掉头则 401。
+12. 打开「运行状态」→ 顶部出现设备仪表盘（CPU / 内存 / 每卡一枚）；与 `vmstat`、
+    `free`、`nvidia-smi` 对照数值一致；等 5 秒看指针随刷新移动；把浏览器窗口缩到
+    760px 确认网格分列不错乱。
 
 ## 边界与已知限制
 

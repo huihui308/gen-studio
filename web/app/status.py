@@ -59,6 +59,60 @@ def unavailable(label: str, reason: str, source: str | None = None) -> dict[str,
     return field(label, None, available=False, source=source, note=reason)
 
 
+# ───────────────────────── device metrics（仪表盘数据源） ─────────────────────────
+#: 每个指标的 (偏高, 告警) 阈值，除 temp_c 外单位为 %。
+LEVELS: dict[str, tuple[float, float]] = {
+    "cpu": (70.0, 90.0),
+    "memory": (75.0, 90.0),
+    "swap": (80.0, 95.0),
+    "gpu_util": (70.0, 90.0),
+    "gpu_mem": (80.0, 95.0),
+    "temp_c": (75.0, 90.0),
+}
+
+
+def level(metric: str, value: float | int | None) -> str | None:
+    """分级配色：正常 ok / 偏高 warn / 告警 danger；取不到值返回 None。"""
+
+    if value is None:
+        return None
+    warn_at, danger_at = LEVELS[metric]
+    if value >= danger_at:
+        return "danger"
+    if value >= warn_at:
+        return "warn"
+    return "ok"
+
+
+def _read_proc_stat() -> tuple[int, int]:
+    """(总 jiffies, 空闲 jiffies)，空闲含 iowait——与 top 的 idle 口径一致。"""
+
+    with open("/proc/stat", encoding="ascii") as handle:
+        parts = handle.readline().split()
+    values = [int(item) for item in parts[1:]]
+    idle = values[3] + (values[4] if len(values) > 4 else 0)
+    return sum(values), idle
+
+
+def _read_meminfo() -> dict[str, int]:
+    info: dict[str, int] = {}
+    with open("/proc/meminfo", encoding="ascii") as handle:
+        for line in handle:
+            key, _, rest = line.partition(":")
+            fields = rest.split()
+            if fields:
+                info[key] = int(fields[0])          # 单位 kB
+    return info
+
+
+def _gpu_vram_percent(gpu) -> float | None:
+    total = gpu.memory_total_mb
+    used = gpu.memory_used_mb
+    if not total or used is None:
+        return None
+    return round(max(0.0, min(100.0, used / total * 100.0)), 1)
+
+
 class _HttpResult:
     def __init__(self, ok: bool, status_code: int | None, data: Any, latency_ms: int | None, error: str | None) -> None:
         self.ok = ok
@@ -93,6 +147,15 @@ class StatusCollector:
         self.settings = settings
         self.gpu_probe = gpu_probe
         self.manager = manager
+        # CPU 占用率 = 相邻两次 /proc/stat 读数的差值：构造时先打一个采样点，
+        # 之后每次 collect() 推进；窗口过短/过长时不估算，只复用最近一次实测。
+        self._cpu_prev: tuple[float, int, int] | None = None
+        try:
+            total, idle = _read_proc_stat()
+            self._cpu_prev = (time.time(), total, idle)
+        except (OSError, ValueError, IndexError):
+            self._cpu_prev = None
+        self._cpu_last: tuple[float, float] | None = None   # (采样时刻, 占用率 %)
 
     def collect(self) -> dict[str, Any]:
         started = time.time()
@@ -109,6 +172,10 @@ class StatusCollector:
                     "memory_free_mb": gpu.memory_free_mb,
                     "utilization_pct": gpu.utilization_pct,
                     "temperature_c": gpu.temperature_c,
+                    "vram_percent": _gpu_vram_percent(gpu),
+                    "vram_tone": level("gpu_mem", _gpu_vram_percent(gpu)),
+                    "util_tone": level("gpu_util", gpu.utilization_pct),
+                    "temp_tone": level("temp_c", gpu.temperature_c),
                 }
                 for gpu in listing.gpus
             ],
@@ -118,8 +185,88 @@ class StatusCollector:
             "generated_at": _iso(started),
             "generated_at_local": datetime.fromtimestamp(started).astimezone().isoformat(timespec="seconds"),
             "gpus": gpu_payload,
+            "device": {"cpu": self._cpu(), "memory": self._memory()},
             "models": models,
         }
+
+    # ---------------------------------------------------------------- device
+    def _cpu(self) -> dict[str, Any]:
+        base: dict[str, Any] = {
+            "available": False, "percent": None, "level": None,
+            "cores": os.cpu_count(), "load": [None, None, None],
+            "note": None, "source": "/proc/stat",
+        }
+        try:
+            base["load"] = [round(item, 2) for item in os.getloadavg()]
+        except OSError:
+            pass                                    # 个别环境无 loadavg，保持 None
+        try:
+            total, idle = _read_proc_stat()
+        except (OSError, ValueError, IndexError) as exc:
+            base["note"] = f"读取 /proc/stat 失败：{exc}"
+            return base
+        now = time.time()
+        prev, self._cpu_prev = self._cpu_prev, (now, total, idle)
+        if prev is None:
+            base["note"] = "首次采样，下一次刷新即可显示 CPU 占用率"
+            return base
+        previous_at, prev_total, prev_idle = prev
+        window = now - previous_at
+        if window < 0.5:
+            # 页面加载后 status.js 会立刻补拉一次，间隔太短差值没有统计意义；
+            # 沿用最近一次实测值（数据仍来自 /proc/stat，不新造数字）。
+            if self._cpu_last is not None:
+                last_at, last_percent = self._cpu_last
+                base.update(available=True, percent=last_percent, level=level("cpu", last_percent),
+                            note=f"沿用 {max(0, int(now - last_at))} 秒前的采样结果")
+                return base
+            base["note"] = "采样间隔过短，下一次刷新即可显示 CPU 占用率"
+            return base
+        if window > 60:
+            # 长时间无人看板后重开：宁可空一拍也不给过期均值冒充当前值。
+            base["note"] = f"距上次采样已 {int(window)} 秒，为避免显示过期均值本次留空，下一次刷新即可"
+            return base
+        delta_total, delta_idle = total - prev_total, idle - prev_idle
+        if delta_total <= 0:
+            base["note"] = "/proc/stat 计数没有增量，下一次刷新重试"
+            return base
+        percent = round(max(0.0, min(100.0, (1.0 - delta_idle / delta_total) * 100.0)), 1)
+        self._cpu_last = (now, percent)
+        base.update(available=True, percent=percent, level=level("cpu", percent), note=None)
+        return base
+
+    def _memory(self) -> dict[str, Any]:
+        base: dict[str, Any] = {
+            "available": False, "note": None, "source": "/proc/meminfo",
+            "total_mb": None, "used_mb": None, "available_mb": None, "percent": None,
+            "level": None, "swap_total_mb": None, "swap_used_mb": None,
+            "swap_percent": None, "swap_level": None,
+        }
+        try:
+            info = _read_meminfo()
+            total = info["MemTotal"]
+        except (OSError, KeyError, ValueError) as exc:
+            base["note"] = f"读取 /proc/meminfo 失败：{exc}"
+            return base
+        if total <= 0:
+            base["note"] = "/proc/meminfo 的 MemTotal 无效"
+            return base
+        free = info.get("MemFree", 0)
+        buffers = info.get("Buffers", 0)
+        cache = info.get("Cached", 0) + info.get("SReclaimable", 0)
+        used = max(0, total - free - buffers - cache)          # 与 free(1) 的 used 口径一致
+        percent = round(used / total * 100.0, 1)
+        swap_total = info.get("SwapTotal", 0)
+        swap_used = max(0, swap_total - info.get("SwapFree", 0))
+        swap_percent = round(swap_used / swap_total * 100.0, 1) if swap_total > 0 else None
+        base.update(
+            available=True, total_mb=total // 1024, used_mb=used // 1024,
+            available_mb=info.get("MemAvailable", free) // 1024, percent=percent,
+            level=level("memory", percent),
+            swap_total_mb=swap_total // 1024, swap_used_mb=swap_used // 1024,
+            swap_percent=swap_percent, swap_level=level("swap", swap_percent),
+        )
+        return base
 
     # ------------------------------------------------------------------ model
     def _model(self, model_id: str, listing) -> dict[str, Any]:

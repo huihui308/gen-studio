@@ -653,7 +653,7 @@ def test_api_status_returns_observed_data(client):
     response = client.get("/api/status", headers={"Accept": "application/json"})
     assert response.status_code == 200
     data = response.json()
-    assert set(data) == {"generated_at", "generated_at_local", "gpus", "models"}
+    assert set(data) == {"generated_at", "generated_at_local", "gpus", "device", "models"}
     assert set(data["models"]) == {"minimax-h3", "qwen-image2.0"}
     assert data["gpus"]["available"] is True
 

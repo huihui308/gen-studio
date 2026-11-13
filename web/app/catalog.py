@@ -76,7 +76,7 @@ CATALOG: dict[str, ModelSpec] = {
     ),
     "qwen-image2.0": ModelSpec(
         id="qwen-image2.0",
-        name="Qwen-Image 2.0",
+        name="Qwen-Image-2.1-Turbo int8",
         vendor="Qwen",
         summary="文本生成图像",
         kind="image",

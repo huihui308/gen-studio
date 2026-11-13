@@ -111,7 +111,7 @@ def test_unit_start_failure_is_reported_and_state_is_failed(manager):
     manager, fake, _ = manager
     fake.fail_start = "unit refused to start"
 
-    with pytest.raises(StartError, match="无法启动 Qwen-Image 2.0"):
+    with pytest.raises(StartError, match="无法启动 Qwen-Image-2.1-Turbo int8"):
         manager.start("qwen-image2.0", 0, "127.0.0.1")
 
     state = manager.state("qwen-image2.0")

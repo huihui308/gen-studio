@@ -11,7 +11,7 @@ import time
 
 from fastapi.testclient import TestClient
 
-from app.status import _read_proc_stat, level
+from app.status import _calc_cpu_percent, level
 
 from conftest import FakeProbe, login
 
@@ -43,26 +43,23 @@ def test_api_status_includes_device_block(client):
         assert mem["swap_percent"] is not None
 
 
-def test_cpu_percent_computed_from_injected_sample(make_app, monkeypatch):
+def test_cpu_percent_computed_from_injected_sample():
     """差值采样：5 秒窗口内总 jiffies +1000、空闲 +900 → 10.0%。"""
 
-    app = make_app()
-    collector = app.state.collector
-    monkeypatch.setattr("app.status._read_proc_stat", lambda: (11_000, 9_900))
-    collector._cpu_prev = (time.time() - 5.0, 10_000, 9_000)
+    now = time.time()
+    percent = _calc_cpu_percent((now - 5.0, 10_000, 9_000), (now, 11_000, 9_900))
+    assert percent == 10.0
 
-    cpu = collector._cpu()
-    assert cpu["available"] is True
-    assert cpu["percent"] == 10.0
-    assert cpu["level"] == "ok"
-    assert cpu["note"] is None
+    # 窗口无效不产出假数：时钟回拨、挂起超过 60 秒、计数无增量
+    assert _calc_cpu_percent((now, 10_000, 9_000), (now - 1.0, 11_000, 9_900)) is None
+    assert _calc_cpu_percent((now - 300.0, 10_000, 9_000), (now, 11_000, 9_900)) is None
+    assert _calc_cpu_percent((now - 5.0, 10_000, 9_000), (now, 10_000, 9_000)) is None
 
 
 def test_cpu_first_sample_is_unavailable_with_reason(make_app):
     app = make_app()
     collector = app.state.collector
-    collector._cpu_prev = None
-    collector._cpu_last = None
+    collector._cpu_sample = None
 
     cpu = collector._cpu()
     assert cpu["available"] is False
@@ -71,18 +68,16 @@ def test_cpu_first_sample_is_unavailable_with_reason(make_app):
 
 
 def test_cpu_stale_window_does_not_invent_a_value(make_app):
-    """超过 60 秒的旧采样点不换算成“当前值”，留空并说明。"""
+    """样本滞后超过阈值（采样线程停摆）留空并说明，不拿旧值冒充当前。"""
 
     app = make_app()
     collector = app.state.collector
-    total, idle = _read_proc_stat()
-    collector._cpu_prev = (time.time() - 300.0, total, idle)
-    collector._cpu_last = None
+    collector._cpu_sample = (time.time() - 60.0, 50.0)
 
     cpu = collector._cpu()
     assert cpu["available"] is False
     assert cpu["percent"] is None
-    assert "过期" in cpu["note"] or "采样" in cpu["note"]
+    assert "滞后" in cpu["note"]
 
 
 def test_level_thresholds():
@@ -100,8 +95,7 @@ def test_level_thresholds():
 def test_status_page_renders_gauges_without_nan(make_app):
     app = make_app()
     # 让 CPU 也进入“有值”路径，验证 SVG 真的画出来
-    total, idle = _read_proc_stat()
-    app.state.collector._cpu_prev = (time.time() - 5.0, max(0, total - 2000), max(0, idle - 1900))
+    app.state.collector._cpu_sample = (time.time(), 12.0)
     client = TestClient(app)
     login(client)
 
@@ -123,8 +117,7 @@ def test_status_page_renders_gauges_without_nan(make_app):
 def test_gpu_failure_keeps_cpu_memory_and_shows_placeholder(make_app):
     probe = FakeProbe(error="nvidia-smi 查询失败：测试注入")
     app = make_app(probe)
-    total, idle = _read_proc_stat()
-    app.state.collector._cpu_prev = (time.time() - 5.0, max(0, total - 2000), max(0, idle - 1900))
+    app.state.collector._cpu_sample = (time.time(), 12.0)
     client = TestClient(app)
     login(client)
 

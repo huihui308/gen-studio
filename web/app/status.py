@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -84,6 +85,29 @@ def level(metric: str, value: float | int | None) -> str | None:
     return "ok"
 
 
+#: 后台 CPU 采样周期（秒）与样本过期阈值（秒）。
+CPU_SAMPLE_INTERVAL = 5.0
+CPU_SAMPLE_STALE_S = 15.0
+
+
+def _calc_cpu_percent(prev: tuple[float, int, int], curr: tuple[float, int, int]) -> float | None:
+    """由两次 /proc/stat 读数算占用率；窗口无效（回拨/挂起/无增量）返回 None。
+
+    prev/curr 均为 (时刻, 总 jiffies, 空闲 jiffies)；空闲含 iowait。
+    """
+
+    prev_at, prev_total, prev_idle = prev
+    now, total, idle = curr
+    window = now - prev_at
+    if window <= 0 or window > 60:
+        return None                        # 挂起恢复或时钟回拨：不冒充当前值
+    delta_total = total - prev_total
+    if delta_total <= 0:
+        return None
+    delta_idle = idle - prev_idle
+    return round(max(0.0, min(100.0, (1.0 - delta_idle / delta_total) * 100.0)), 1)
+
+
 def _read_proc_stat() -> tuple[int, int]:
     """(总 jiffies, 空闲 jiffies)，空闲含 iowait——与 top 的 idle 口径一致。"""
 
@@ -147,15 +171,18 @@ class StatusCollector:
         self.settings = settings
         self.gpu_probe = gpu_probe
         self.manager = manager
-        # CPU 占用率 = 相邻两次 /proc/stat 读数的差值：构造时先打一个采样点，
-        # 之后每次 collect() 推进；窗口过短/过长时不估算，只复用最近一次实测。
-        self._cpu_prev: tuple[float, int, int] | None = None
+        # CPU 占用率是差值指标：由后台线程按固定节奏独立采样，与页面轮询解耦——
+        # 标签页隐藏、页面关闭、控制台部署期间照常出数，页面只读最近样本。
+        #（旧实现靠 collect() 推进采样点，断档 >60 秒就留空，被用户报「CPU 不更新」。）
+        self._cpu_lock = threading.Lock()
+        self._cpu_prev: tuple[float, int, int] | None = None        # (时刻, 总, 空闲)
+        self._cpu_sample: tuple[float, float] | None = None         # (采样时刻, 占用率 %)
         try:
             total, idle = _read_proc_stat()
             self._cpu_prev = (time.time(), total, idle)
         except (OSError, ValueError, IndexError):
             self._cpu_prev = None
-        self._cpu_last: tuple[float, float] | None = None   # (采样时刻, 占用率 %)
+        threading.Thread(target=self._cpu_sampler, daemon=True, name="cpu-sampler").start()
 
     def collect(self) -> dict[str, Any]:
         started = time.time()
@@ -190,6 +217,27 @@ class StatusCollector:
         }
 
     # ---------------------------------------------------------------- device
+    def _cpu_sampler(self) -> None:
+        """后台线程：固定节奏采 /proc/stat，产出 _cpu_sample（页面只读它）。"""
+
+        time.sleep(0.75)                            # 让服务一起来就有第一个差值窗口
+        while True:
+            try:
+                total, idle = _read_proc_stat()
+            except (OSError, ValueError, IndexError):
+                time.sleep(CPU_SAMPLE_INTERVAL)
+                continue
+            now = time.time()
+            with self._cpu_lock:
+                prev, self._cpu_prev = self._cpu_prev, (now, total, idle)
+                if prev is None:
+                    time.sleep(CPU_SAMPLE_INTERVAL)
+                    continue
+                percent = _calc_cpu_percent(prev, (now, total, idle))
+                if percent is not None:             # 窗口无效只重置，不产出假数
+                    self._cpu_sample = (now, percent)
+            time.sleep(CPU_SAMPLE_INTERVAL)
+
     def _cpu(self) -> dict[str, Any]:
         base: dict[str, Any] = {
             "available": False, "percent": None, "level": None,
@@ -200,38 +248,16 @@ class StatusCollector:
             base["load"] = [round(item, 2) for item in os.getloadavg()]
         except OSError:
             pass                                    # 个别环境无 loadavg，保持 None
-        try:
-            total, idle = _read_proc_stat()
-        except (OSError, ValueError, IndexError) as exc:
-            base["note"] = f"读取 /proc/stat 失败：{exc}"
+        with self._cpu_lock:
+            sample = self._cpu_sample
+        if sample is None:
+            base["note"] = "CPU 采样启动中，稍后刷新即可显示"
             return base
-        now = time.time()
-        prev, self._cpu_prev = self._cpu_prev, (now, total, idle)
-        if prev is None:
-            base["note"] = "首次采样，下一次刷新即可显示 CPU 占用率"
+        sampled_at, percent = sample
+        age = time.time() - sampled_at
+        if age > CPU_SAMPLE_STALE_S:
+            base["note"] = f"CPU 采样线程滞后 {int(age)} 秒，暂不显示（下次刷新重试）"
             return base
-        previous_at, prev_total, prev_idle = prev
-        window = now - previous_at
-        if window < 0.5:
-            # 页面加载后 status.js 会立刻补拉一次，间隔太短差值没有统计意义；
-            # 沿用最近一次实测值（数据仍来自 /proc/stat，不新造数字）。
-            if self._cpu_last is not None:
-                last_at, last_percent = self._cpu_last
-                base.update(available=True, percent=last_percent, level=level("cpu", last_percent),
-                            note=f"沿用 {max(0, int(now - last_at))} 秒前的采样结果")
-                return base
-            base["note"] = "采样间隔过短，下一次刷新即可显示 CPU 占用率"
-            return base
-        if window > 60:
-            # 长时间无人看板后重开：宁可空一拍也不给过期均值冒充当前值。
-            base["note"] = f"距上次采样已 {int(window)} 秒，为避免显示过期均值本次留空，下一次刷新即可"
-            return base
-        delta_total, delta_idle = total - prev_total, idle - prev_idle
-        if delta_total <= 0:
-            base["note"] = "/proc/stat 计数没有增量，下一次刷新重试"
-            return base
-        percent = round(max(0.0, min(100.0, (1.0 - delta_idle / delta_total) * 100.0)), 1)
-        self._cpu_last = (now, percent)
         base.update(available=True, percent=percent, level=level("cpu", percent), note=None)
         return base
 
@@ -267,6 +293,7 @@ class StatusCollector:
             swap_percent=swap_percent, swap_level=level("swap", swap_percent),
         )
         return base
+
 
     # ------------------------------------------------------------------ model
     def _model(self, model_id: str, listing) -> dict[str, Any]:

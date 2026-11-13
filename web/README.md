@@ -1,7 +1,7 @@
 # Gen Studio — 本机生成模型 Web 控制台
 
 `web/` 是 `deploy-models` 仓库的可视化控制台：登录后启动 / 停止 **MiniMax H3** 与
-**Qwen-Image 2.0** 两个生成模型，指定运行显卡，并在状态页核对真实运行情况；
+**Qwen-Image-2.1-Turbo int8**（模型 id 仍为 `qwen-image2.0`，unit/路由依赖）两个生成模型，指定运行显卡，并在状态页核对真实运行情况；
 另提供 H3 视频生成页（提示词 → 视频，进度 + 播放）与图像生成页（参考图 + 提示词 → 生图 → 下载）。技术栈为
 FastAPI + Jinja2 服务端渲染 + 原生 CSS/JS，无前端构建步骤。控制台默认
 监听 `127.0.0.1:8090`；部署时可用 `GEN_STUDIO_HOST` 或 `web/data/settings.json` 改为 `0.0.0.0`
@@ -226,10 +226,13 @@ web/
 - **设备仪表盘**（2026-11-12）：页面顶部新增汽车仪表盘区——CPU、内存、每块 GPU 各一枚
   270° 弧形表盘（SVG 服务端渲染，随 `/status/partial` 每 5 秒整体刷新），含 11 根刻度、
   指针、中央数值与分级配色（`app/status.py: LEVELS/level`，正常/偏高/告警三档）。
-  - 取数：CPU 用 `/proc/stat` 两次采样差值（构造时打点，窗口 <0.5s 复用最近实测、
-    >60s 留空不给过期均值）；内存用 `/proc/meminfo`（used 口径与 `free` 一致，
-    实测逐字节相等）；GPU 复用现有 `GpuProbe`，每卡一枚表盘（指针=利用率，
-    卡底细条=显存占比，副文案含型号/显存/温度）。
+  - 取数：CPU 用 `/proc/stat` 两次采样差值，由**后台线程固定每 5 秒独立采样**
+    （与页面轮询解耦——标签页隐藏/页面关闭/控制台部署期间照常出数；样本滞后 >15s 才
+    留空并注明，窗口无效（挂起恢复/时钟回拨）只重置不产出假数。旧实现由页面轮询喂
+    采样点，断档 >60s 即留空，被报「CPU 经常不更新」，2026-11-12 改为常驻采样）；
+    内存用 `/proc/meminfo`（used 口径与 `free` 一致，实测逐字节相等）；
+    GPU 复用现有 `GpuProbe`，每卡一枚表盘（指针=利用率，卡底细条=显存占比，
+    副文案含型号/显存/温度）。
   - `payload.device = {cpu, memory}` 挂进 `collect()`，`GET /api/status` 同步返回；
     阈值：CPU 70/90、内存 75/90、GPU 利用率 70/90、显存 80/95、温度 75/90（°C）。
   - 边界：nvidia-smi 失败 → GPU 表盘整块不渲染（只留 CPU/内存 + 告警文案），单卡字段
@@ -238,7 +241,7 @@ web/
 - **MiniMax H3**：健康检查 `GET /health`、`/server_info`（已加载模型、SGLang 版本、
   并行度）、`/v1/models`（任务类型、管线、精度）、PID / 运行时长 / 端口 / 显卡 /
   显存 / 利用率 / 温度；队列与生成耗时因 SGLang 0.5.22 未暴露对应接口而标注不可用。
-- **Qwen-Image 2.0**：`GET /system_stats`（ComfyUI / PyTorch 版本、后端可见显存）、
+- **Qwen-Image-2.1-Turbo int8**：`GET /system_stats`（ComfyUI / PyTorch 版本、后端可见显存）、
   `GET /queue`（运行 / 等待数量、当前 prompt_id）、进程与显卡指标。
 - 两个模型的状态卡片放在 Sheet 页签下，默认显示 `minimax-h3`；切换只改前端可见性，
   不改变 5 秒轮询（仍只请求一次 `/status/partial`），轮询后保留当前选中页签。

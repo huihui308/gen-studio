@@ -55,7 +55,7 @@ def test_http_start_refuses_while_other_model_runs_and_recovers(make_app):
     assert "error=" in response.headers["location"]
     page = client.get(response.headers["location"])
     assert "只能同时运行一个" in page.text
-    assert "Qwen-Image 2.0 正在运行" in page.text
+    assert "Qwen-Image-2.1-Turbo int8 正在运行" in page.text
     assert app.state.manager.state("minimax-h3").pid is None
     # 拒绝不等于抢占：正在运行的 qwen 必须原样活着
     assert app.state.manager.state("qwen-image2.0").pid == qwen_pid

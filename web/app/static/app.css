@@ -2153,4 +2153,20 @@ body.lightbox-open {
 .gauge-bar-fill--warn { fill: var(--warning); }
 .gauge-bar-fill--danger { fill: var(--danger); }
 
+/* 磁盘空间表（status）：使用率条复用 gauge-bar 的填充色 */
+.disk-usage {
+  min-width: 130px;
+}
+
+.disk-usage-num {
+  font-weight: 600;
+}
+
+.disk-bar {
+  display: block;
+  width: 100%;
+  height: 6px;
+  margin-top: 4px;
+}
+
 

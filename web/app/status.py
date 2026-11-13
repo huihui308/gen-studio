@@ -12,6 +12,7 @@ Honesty rules (requirement 4):
 from __future__ import annotations
 
 import json
+import math
 import os
 import threading
 import time
@@ -69,6 +70,7 @@ LEVELS: dict[str, tuple[float, float]] = {
     "gpu_util": (70.0, 90.0),
     "gpu_mem": (80.0, 95.0),
     "temp_c": (75.0, 90.0),
+    "disk": (80.0, 95.0),
 }
 
 
@@ -127,6 +129,51 @@ def _read_meminfo() -> dict[str, int]:
             if fields:
                 info[key] = int(fields[0])          # 单位 kB
     return info
+
+
+#: 参与容量统计的本地磁盘文件系统（/proc/mounts 的 fs type 白名单；
+#: 排除 tmpfs/overlay/vfat 等伪文件系统与 EFI 分区）。
+DISK_FS_TYPES = frozenset(
+    {"ext2", "ext3", "ext4", "xfs", "btrfs", "f2fs", "zfs", "jfs", "reiserfs", "ntfs3", "exfat"}
+)
+
+
+def _read_mounts() -> list[tuple[str, str, str]]:
+    """(设备, 挂载点, 文件系统)——只保留真实磁盘文件系统。
+
+    同一设备的 bind 挂载只取 /proc/mounts 里的第一条，避免重复行。
+    """
+
+    mounts: list[tuple[str, str, str]] = []
+    seen: set[str] = set()
+    with open("/proc/mounts", encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            parts = line.split()
+            if len(parts) < 3:
+                continue
+            device, mount, fstype = parts[0], parts[1], parts[2]
+            if fstype not in DISK_FS_TYPES or device in seen:
+                continue
+            seen.add(device)
+            mounts.append((device, mount, fstype))
+    return mounts
+
+
+def _disk_usage(mount: str) -> tuple[int, int, int, float]:
+    """(总量字节, 已用字节, 可用字节, 使用率 %)——口径与 df(1) 一致。
+
+    已用 = 总块数 - 空闲块数（含 root 预留）；可用 = 普通用户可见的 bavail；
+    使用率 = ceil(已用 / (已用 + 可用) × 100)，与 df(1) 的 Use% 同一公式
+    （df 向上取整，本机四个挂载点实测 39/1/33/38 全对齐）。
+    """
+
+    st = os.statvfs(mount)
+    total = st.f_blocks * st.f_frsize
+    free = st.f_bfree * st.f_frsize
+    avail = st.f_bavail * st.f_frsize
+    used = max(0, total - free)
+    percent = float(math.ceil(used / (used + avail) * 100.0)) if (used + avail) > 0 else 0.0
+    return total, used, avail, percent
 
 
 def _gpu_vram_percent(gpu) -> float | None:
@@ -212,7 +259,7 @@ class StatusCollector:
             "generated_at": _iso(started),
             "generated_at_local": datetime.fromtimestamp(started).astimezone().isoformat(timespec="seconds"),
             "gpus": gpu_payload,
-            "device": {"cpu": self._cpu(), "memory": self._memory()},
+            "device": {"cpu": self._cpu(), "memory": self._memory(), "disk": self._disk()},
             "models": models,
         }
 
@@ -294,6 +341,53 @@ class StatusCollector:
         )
         return base
 
+    def _disk(self) -> dict[str, Any]:
+        """磁盘容量：/proc/mounts 给挂载清单，statvfs 给每个挂载点的用量。"""
+
+        base: dict[str, Any] = {
+            "available": False, "note": None,
+            "source": "/proc/mounts + statvfs", "items": [],
+        }
+        try:
+            mounts = _read_mounts()
+        except OSError as exc:
+            base["note"] = f"读取 /proc/mounts 失败：{exc}"
+            return base
+        if not mounts:
+            base["note"] = "/proc/mounts 里没有可统计的磁盘文件系统"
+            return base
+        items: list[dict[str, Any]] = []
+        for device, mount, fstype in mounts:
+            item: dict[str, Any] = {
+                "mount": mount, "device": device, "fs": fstype,
+                "available": False, "note": None,
+                "total_mb": None, "used_mb": None, "avail_mb": None,
+                "percent": None, "level": None,
+            }
+            try:
+                total, used, avail, percent = _disk_usage(mount)
+            except OSError as exc:
+                item["note"] = f"读取 {mount} 容量失败：{exc}"
+                items.append(item)
+                continue
+            if total <= 0:
+                item["note"] = f"{mount} 的容量为 0（挂载未就绪或不支持 statvfs）"
+                items.append(item)
+                continue
+            item.update(
+                available=True, note=None,
+                total_mb=total // (1024 * 1024),
+                used_mb=used // (1024 * 1024),
+                avail_mb=avail // (1024 * 1024),
+                percent=percent, level=level("disk", percent),
+            )
+            items.append(item)
+        base["items"] = items
+        if not any(item["available"] for item in items):
+            base["note"] = "所有挂载点都读不到容量"
+            return base
+        base["available"] = True
+        return base
 
     # ------------------------------------------------------------------ model
     def _model(self, model_id: str, listing) -> dict[str, Any]:
